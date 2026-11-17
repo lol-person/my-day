@@ -1,11 +1,10 @@
-// lib/features/backup/presentation/backup_page.dart
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/backup/backup_service.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../l10n/l10n.dart';
 
 class BackupPage extends StatefulWidget {
   const BackupPage({super.key, required this.database});
@@ -29,6 +28,7 @@ class _BackupPageState extends State<BackupPage> {
 
   Future<void> _exportBackup() async {
     if (_isWorking) return;
+    final l10n = context.l10n;
 
     setState(() {
       _isWorking = true;
@@ -38,7 +38,7 @@ class _BackupPageState extends State<BackupPage> {
       final bytes = await _backupService.createBackup();
 
       final result = await FilePicker.saveFile(
-        dialogTitle: 'Сохранить резервную копию',
+        dialogTitle: l10n.createBackup,
         fileName: BackupService.suggestedFileName(),
         bytes: bytes,
       );
@@ -46,13 +46,13 @@ class _BackupPageState extends State<BackupPage> {
       if (!mounted) return;
 
       if (result == null) {
-        _showMessage('Сохранение отменено.');
+        _showMessage(context.l10n.backupCanceled);
       } else {
-        _showMessage('Резервная копия сохранена.');
+        _showMessage(context.l10n.backupCreated);
       }
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
-      _showMessage('Не удалось создать резервную копию: $error');
+      _showMessage(context.l10n.backupCreateFailed);
     } finally {
       if (mounted) {
         setState(() {
@@ -64,6 +64,7 @@ class _BackupPageState extends State<BackupPage> {
 
   Future<void> _importBackup() async {
     if (_isWorking) return;
+    final l10n = context.l10n;
 
     try {
       final file = await FilePicker.pickFile(
@@ -76,7 +77,7 @@ class _BackupPageState extends State<BackupPage> {
       final length = await file.length();
 
       if (length != null && length > BackupService.maxBackupBytes) {
-        _showMessage('Файл превышает допустимый размер 25 МБ.');
+        _showMessage(l10n.fileTooLarge);
         return;
       }
 
@@ -88,25 +89,20 @@ class _BackupPageState extends State<BackupPage> {
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text('Восстановить данные?'),
-            content: const Text(
-              'Текущие задачи, привычки, история выполнения и настройки '
-              'будут заменены содержимым выбранной резервной копии. '
-              'Это действие нельзя отменить. Рекомендуется сначала '
-              'создать резервную копию текущих данных.',
-            ),
+            title: Text(context.l10n.restoreConfirmTitle),
+            content: Text(context.l10n.restoreConfirmBody),
             actions: [
               TextButton(
                 onPressed: () {
                   Navigator.of(dialogContext).pop(false);
                 },
-                child: const Text('Отмена'),
+                child: Text(context.l10n.cancel),
               ),
               FilledButton(
                 onPressed: () {
                   Navigator.of(dialogContext).pop(true);
                 },
-                child: const Text('Восстановить'),
+                child: Text(context.l10n.restore),
               ),
             ],
           );
@@ -131,25 +127,24 @@ class _BackupPageState extends State<BackupPage> {
 
       if (!mounted) return;
 
-      final message = StringBuffer(
-        'Данные восстановлены. '
-        'Задач: ${summary.tasksCount}, '
-        'привычек: ${summary.habitsCount}, '
-        'отметок: ${summary.entriesCount}, '
-        'настроек: ${summary.settingsCount}.',
+      _showMessage(
+        reminderWarning
+            ? context.l10n.restoreCompleteWithWarning(
+                summary.tasksCount,
+                summary.habitsCount,
+                summary.entriesCount,
+                summary.settingsCount,
+              )
+            : context.l10n.restoreComplete(
+                summary.tasksCount,
+                summary.habitsCount,
+                summary.entriesCount,
+                summary.settingsCount,
+              ),
       );
-
-      if (reminderWarning) {
-        message.write(
-          ' Не удалось обновить очередь напоминаний — '
-          'проверь настройки напоминаний.',
-        );
-      }
-
-      _showMessage(message.toString());
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
-      _showMessage('Не удалось восстановить копию: $error');
+      _showMessage(context.l10n.restoreFailed);
     } finally {
       if (mounted) {
         setState(() {
@@ -231,8 +226,8 @@ class _BackupPageState extends State<BackupPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Экспорт и импорт',
+        title: Text(
+          context.l10n.backupRestore,
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
@@ -241,15 +236,14 @@ class _BackupPageState extends State<BackupPage> {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
           children: [
             Text(
-              'Твои данные — под твоим контролем',
+              context.l10n.backupTitle,
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Резервная копия хранится там, куда ты сам её сохранишь. '
-              'Приложение не отправляет её на собственный сервер.',
+              context.l10n.backupDescription,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: colors.onSurfaceVariant,
                 height: 1.5,
@@ -258,22 +252,18 @@ class _BackupPageState extends State<BackupPage> {
             const SizedBox(height: 24),
             _buildActionCard(
               icon: Icons.backup_rounded,
-              title: 'Создать резервную копию',
-              description:
-                  'Сохрани задачи, привычки, расписания, историю '
-                  'выполнения и настройки в один JSON-файл.',
-              buttonLabel: 'Экспортировать данные',
+              title: context.l10n.createBackup,
+              description: context.l10n.backupExportDescription,
+              buttonLabel: context.l10n.exportData,
               onPressed: _exportBackup,
               destructive: false,
             ),
             const SizedBox(height: 16),
             _buildActionCard(
               icon: Icons.settings_backup_restore_rounded,
-              title: 'Восстановить из копии',
-              description:
-                  'Выбери ранее созданный файл. Текущие данные будут '
-                  'заменены содержимым копии.',
-              buttonLabel: 'Выбрать файл и восстановить',
+              title: context.l10n.restoreBackup,
+              description: context.l10n.backupImportDescription,
+              buttonLabel: context.l10n.chooseAndRestore,
               onPressed: _importBackup,
               destructive: true,
             ),
@@ -281,7 +271,7 @@ class _BackupPageState extends State<BackupPage> {
               const SizedBox(height: 24),
               const Center(child: CircularProgressIndicator()),
               const SizedBox(height: 8),
-              const Center(child: Text('Обрабатываем данные…')),
+              Center(child: Text(context.l10n.processingData)),
             ],
             const SizedBox(height: 24),
             Container(
@@ -295,14 +285,7 @@ class _BackupPageState extends State<BackupPage> {
                 children: [
                   Icon(Icons.info_outline_rounded, color: colors.primary),
                   const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'Храни копию в безопасном месте. JSON-файл не зашифрован: '
-                      'любой, кто получит его, сможет прочитать содержащиеся '
-                      'в нём данные. Для переноса на другое устройство '
-                      'скопируй файл и импортируй его там.',
-                    ),
-                  ),
+                  Expanded(child: Text(context.l10n.backupPrivacy)),
                 ],
               ),
             ),

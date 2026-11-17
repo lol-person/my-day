@@ -1,5 +1,3 @@
-// lib/core/database/app_database.dart
-
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
@@ -23,10 +21,11 @@ class Habits extends Table {
   DateTimeColumn get createdAt =>
       dateTime().clientDefault(() => DateTime.now())();
 
-  /// Положение привычки в пользовательском списке.
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 
   BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
+
+  DateTimeColumn get deletedAt => dateTime().nullable()();
 }
 
 class HabitScheduleDays extends Table {
@@ -54,7 +53,6 @@ class HabitEntries extends Table {
   Set<Column> get primaryKey => {habitId, day};
 }
 
-/// Таблица задач.
 class Tasks extends Table {
   IntColumn get id => integer().autoIncrement()();
 
@@ -65,20 +63,60 @@ class Tasks extends Table {
   DateTimeColumn get createdAt =>
       dateTime().clientDefault(() => DateTime.now())();
 
-  /// Необязательный срок выполнения.
   DateTimeColumn get dueDate => dateTime().nullable()();
 
-  /// 0 — низкий, 1 — обычный, 2 — высокий.
   IntColumn get priority => integer().withDefault(const Constant(1))();
 
   BoolColumn get isCompleted => boolean().withDefault(const Constant(false))();
 
-  /// Положение задачи в пользовательском списке.
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+}
+
+class FocusTimerState extends Table {
+  IntColumn get id => integer()();
+
+  TextColumn get phase => text()();
+
+  TextColumn get status => text()();
+
+  IntColumn get completedWorkSessions => integer()();
+
+  DateTimeColumn get sessionStartedAt => dateTime().nullable()();
+
+  DateTimeColumn get deadline => dateTime().nullable()();
+
+  DateTimeColumn get segmentStartedAt => dateTime().nullable()();
+
+  IntColumn get remainingSeconds => integer().nullable()();
+
+  IntColumn get elapsedSeconds => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class FocusSessions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  DateTimeColumn get startedAt => dateTime()();
+
+  DateTimeColumn get completedAt => dateTime()();
+
+  IntColumn get durationSeconds => integer()();
 }
 
 @DriftDatabase(
-  tables: [AppSettings, Habits, HabitScheduleDays, HabitEntries, Tasks],
+  tables: [
+    AppSettings,
+    Habits,
+    HabitScheduleDays,
+    HabitEntries,
+    Tasks,
+    FocusTimerState,
+    FocusSessions,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(driftDatabase(name: 'productivity_app'));
@@ -86,7 +124,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -107,6 +145,16 @@ class AppDatabase extends _$AppDatabase {
       if (from < 4) {
         await migrator.addColumn(habits, habits.sortOrder);
         await migrator.addColumn(tasks, tasks.sortOrder);
+      }
+
+      if (from < 5) {
+        await migrator.createTable(focusTimerState);
+        await migrator.createTable(focusSessions);
+      }
+
+      if (from < 6) {
+        await migrator.addColumn(habits, habits.deletedAt);
+        await migrator.addColumn(tasks, tasks.deletedAt);
       }
     },
     beforeOpen: (details) async {

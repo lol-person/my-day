@@ -1,5 +1,3 @@
-// test/features/habits/habit_repository_test.dart
-
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivity_app/core/database/app_database.dart';
@@ -147,4 +145,65 @@ void main() {
 
     expect(await repository.getScheduledWeekdays(habitId), {1, 3, 5});
   });
+
+  test('Корзина сохраняет архив, расписание и историю привычки', () async {
+    final habitId = await repository.createHabit(
+      title: 'Читать',
+      weekdays: {1, 3, 5},
+    );
+    final date = DateTime(2026, 10, 23);
+    await repository.setCompleted(
+      habitId: habitId,
+      date: date,
+      completed: true,
+    );
+    await repository.archiveHabit(habitId);
+    await repository.moveHabitToTrash(
+      habitId,
+      deletedAt: DateTime(2026, 11, 16),
+    );
+
+    expect(await repository.getActiveHabits(), isEmpty);
+    expect(await repository.getArchivedHabits(), isEmpty);
+    final deleted = await repository.getDeletedHabits();
+    expect(deleted.single.id, habitId);
+    expect(deleted.single.isArchived, isTrue);
+    expect(await repository.getScheduledWeekdays(habitId), {1, 3, 5});
+    expect(await repository.isCompleted(habitId: habitId, date: date), isTrue);
+
+    await repository.restoreHabitFromTrash(habitId);
+
+    final restored = await repository.getArchivedHabits();
+    expect(restored.single.id, habitId);
+    expect(restored.single.isArchived, isTrue);
+    expect(restored.single.deletedAt, isNull);
+    expect(await repository.isCompleted(habitId: habitId, date: date), isTrue);
+    expect(await repository.getScheduledWeekdays(habitId), {1, 3, 5});
+  });
+
+  test(
+    'Окончательное удаление привычки удаляет расписание и отметки',
+    () async {
+      final habitId = await repository.createHabit(
+        title: 'Йога',
+        weekdays: {2, 4},
+      );
+      await repository.setCompleted(
+        habitId: habitId,
+        date: DateTime(2026, 11, 16),
+        completed: true,
+      );
+      await repository.moveHabitToTrash(habitId);
+      await repository.permanentlyDeleteHabit(habitId);
+
+      expect(await repository.getDeletedHabits(), isEmpty);
+      expect(await repository.getScheduledWeekdays(habitId), isEmpty);
+      expect(
+        await (database.select(
+          database.habitEntries,
+        )..where((entry) => entry.habitId.equals(habitId))).get(),
+        isEmpty,
+      );
+    },
+  );
 }

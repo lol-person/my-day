@@ -1,8 +1,7 @@
-// lib/features/habits/presentation/habits_page.dart
-
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../l10n/l10n.dart';
 import '../data/habit_repository.dart';
 import 'archived_habits_page.dart';
 
@@ -27,14 +26,14 @@ class _HabitsPageState extends State<HabitsPage> {
 
   String? _errorMessage;
 
-  static const List<String> _weekdayNames = [
-    'Пн',
-    'Вт',
-    'Ср',
-    'Чт',
-    'Пт',
-    'Сб',
-    'Вс',
+  List<String> get _weekdayNames => [
+    context.l10n.weekdayMon,
+    context.l10n.weekdayTue,
+    context.l10n.weekdayWed,
+    context.l10n.weekdayThu,
+    context.l10n.weekdayFri,
+    context.l10n.weekdaySat,
+    context.l10n.weekdaySun,
   ];
 
   @override
@@ -102,7 +101,6 @@ class _HabitsPageState extends State<HabitsPage> {
     }
   }
 
-  /// Изменяет порядок привычек и сохраняет его в локальной базе.
   Future<void> _onReorder(int oldIndex, int newIndex) async {
     if (_isUpdating ||
         oldIndex == newIndex ||
@@ -153,7 +151,7 @@ class _HabitsPageState extends State<HabitsPage> {
         _items = previousItems;
       });
 
-      _showMessage('Не удалось сохранить порядок привычек: $error');
+      _showMessage(context.l10n.habitDataSaveFailed);
 
       await _loadHabits();
     } finally {
@@ -228,15 +226,13 @@ class _HabitsPageState extends State<HabitsPage> {
 
       if (!mounted) return;
 
-      _showMessage(isEditing ? 'Привычка обновлена' : 'Привычка добавлена');
+      _showMessage(
+        isEditing ? context.l10n.habitSaved : context.l10n.habitCreated,
+      );
     } catch (error) {
       if (!mounted) return;
 
-      _showMessage(
-        isEditing
-            ? 'Не удалось изменить привычку: $error'
-            : 'Не удалось создать привычку: $error',
-      );
+      _showMessage(context.l10n.habitDataSaveFailed);
     } finally {
       if (mounted) {
         setState(() {
@@ -264,7 +260,7 @@ class _HabitsPageState extends State<HabitsPage> {
     } catch (error) {
       if (!mounted) return;
 
-      _showMessage('Не удалось сохранить выполнение: $error');
+      _showMessage(context.l10n.habitActionFailed);
     } finally {
       if (mounted) {
         setState(() {
@@ -279,23 +275,20 @@ class _HabitsPageState extends State<HabitsPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Архивировать привычку?'),
-          content: Text(
-            '«${item.habit.title}» исчезнет из активного списка. '
-            'История выполнения сохранится.',
-          ),
+          title: Text(context.l10n.archiveConfirmTitle),
+          content: Text(context.l10n.archiveConfirmBody(item.habit.title)),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop(false);
               },
-              child: const Text('Отмена'),
+              child: Text(context.l10n.cancel),
             ),
             FilledButton(
               onPressed: () {
                 Navigator.of(dialogContext).pop(true);
               },
-              child: const Text('Архивировать'),
+              child: Text(context.l10n.archiveHabit),
             ),
           ],
         );
@@ -316,17 +309,55 @@ class _HabitsPageState extends State<HabitsPage> {
 
       if (!mounted) return;
 
-      _showMessage('Привычка перемещена в архив');
+      _showMessage(context.l10n.habitArchived);
     } catch (error) {
       if (!mounted) return;
 
-      _showMessage('Не удалось архивировать привычку: $error');
+      _showMessage(context.l10n.habitActionFailed);
     } finally {
       if (mounted) {
         setState(() {
           _isUpdating = false;
         });
       }
+    }
+  }
+
+  Future<void> _moveHabitToTrash(_HabitListItem item) async {
+    if (_isUpdating) return;
+    setState(() => _isUpdating = true);
+    try {
+      await _repository.moveHabitToTrash(item.habit.id);
+      await _loadHabits();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              context.l10n.habitMovedToTrashTitle(item.habit.title),
+            ),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: context.l10n.undo,
+              onPressed: () => _restoreTrashedHabit(item.habit),
+            ),
+          ),
+        );
+    } catch (_) {
+      if (mounted) _showMessage(context.l10n.habitTrashFailed);
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
+  }
+
+  Future<void> _restoreTrashedHabit(Habit habit) async {
+    try {
+      await _repository.restoreHabitFromTrash(habit.id);
+      await _loadHabits();
+      if (mounted) _showMessage(context.l10n.habitRestored);
+    } catch (_) {
+      if (mounted) _showMessage(context.l10n.habitRestoreFailed);
     }
   }
 
@@ -337,33 +368,7 @@ class _HabitsPageState extends State<HabitsPage> {
   }
 
   String _formatDate(DateTime date) {
-    const weekdays = [
-      'понедельник',
-      'вторник',
-      'среда',
-      'четверг',
-      'пятница',
-      'суббота',
-      'воскресенье',
-    ];
-
-    const months = [
-      'января',
-      'февраля',
-      'марта',
-      'апреля',
-      'мая',
-      'июня',
-      'июля',
-      'августа',
-      'сентября',
-      'октября',
-      'ноября',
-      'декабря',
-    ];
-
-    return '${weekdays[date.weekday - 1]}, '
-        '${date.day} ${months[date.month - 1]}';
+    return MaterialLocalizations.of(context).formatFullDate(date);
   }
 
   Widget _buildEmptyState(BuildContext context) {
@@ -374,41 +379,22 @@ class _HabitsPageState extends State<HabitsPage> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 48),
       child: Column(
         children: [
-          Container(
-            width: 76,
-            height: 76,
-            decoration: BoxDecoration(
-              color: colors.primaryContainer,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.repeat_rounded,
-              size: 38,
-              color: colors.onPrimaryContainer,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Пока нет привычек',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          Icon(Icons.repeat_rounded, size: 56, color: colors.primary),
+          const SizedBox(height: 16),
+          Text(context.l10n.habitEmpty, style: theme.textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(
-            'Добавь первую привычку и начни '
-            'отслеживать свой прогресс.',
+            context.l10n.habitEmptyDescription,
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colors.onSurfaceVariant,
-              height: 1.5,
             ),
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: _isUpdating ? null : _showCreateHabitDialog,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Добавить привычку'),
+            label: Text(context.l10n.addHabit),
           ),
         ],
       ),
@@ -423,30 +409,26 @@ class _HabitsPageState extends State<HabitsPage> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 48),
       child: Column(
         children: [
-          Icon(Icons.event_available_rounded, size: 64, color: colors.primary),
+          Icon(Icons.event_available_rounded, size: 56, color: colors.primary),
           const SizedBox(height: 16),
           Text(
-            'На сегодня ничего не запланировано',
+            context.l10n.noHabitsToday,
             textAlign: TextAlign.center,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: theme.textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           Text(
-            'Твои активные привычки запланированы на другие дни. '
-            'Сегодня можно отдохнуть или создать новую привычку.',
+            context.l10n.noHabitsTodayDescription,
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colors.onSurfaceVariant,
-              height: 1.5,
             ),
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
             onPressed: _isUpdating ? null : _showCreateHabitDialog,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Добавить привычку'),
+            label: Text(context.l10n.addHabit),
           ),
         ],
       ),
@@ -471,6 +453,7 @@ class _HabitsPageState extends State<HabitsPage> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         leading: Checkbox(
           value: item.isCompleted,
+          semanticLabel: item.habit.title,
           onChanged: _isUpdating
               ? null
               : (value) {
@@ -515,7 +498,7 @@ class _HabitsPageState extends State<HabitsPage> {
               index: index,
               enabled: !_isUpdating,
               child: Semantics(
-                label: 'Перетащить привычку',
+                label: context.l10n.dragToReorderHabit,
                 child: Padding(
                   padding: const EdgeInsets.all(10),
                   child: Icon(
@@ -529,22 +512,24 @@ class _HabitsPageState extends State<HabitsPage> {
             ),
             PopupMenuButton<String>(
               enabled: !_isUpdating,
-              tooltip: 'Действия с привычкой',
+              tooltip: context.l10n.habitActions,
               onSelected: (value) {
                 if (value == 'edit') {
                   _showEditHabitDialog(item);
                 } else if (value == 'archive') {
                   _archiveHabit(item);
+                } else if (value == 'trash') {
+                  _moveHabitToTrash(item);
                 }
               },
-              itemBuilder: (context) => const [
+              itemBuilder: (context) => [
                 PopupMenuItem<String>(
                   value: 'edit',
                   child: Row(
                     children: [
                       Icon(Icons.edit_outlined),
                       SizedBox(width: 12),
-                      Text('Редактировать'),
+                      Text(context.l10n.edit),
                     ],
                   ),
                 ),
@@ -554,7 +539,17 @@ class _HabitsPageState extends State<HabitsPage> {
                     children: [
                       Icon(Icons.archive_outlined),
                       SizedBox(width: 12),
-                      Text('Архивировать'),
+                      Text(context.l10n.archiveHabit),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'trash',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline_rounded),
+                      SizedBox(width: 12),
+                      Text(context.l10n.moveToTrash),
                     ],
                   ),
                 ),
@@ -584,13 +579,13 @@ class _HabitsPageState extends State<HabitsPage> {
               Icon(Icons.error_outline_rounded, size: 42, color: colors.error),
               const SizedBox(height: 12),
               Text(
-                'Не удалось загрузить привычки',
+                context.l10n.habits,
                 style: theme.textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                _errorMessage!,
+                context.l10n.habitLoadFailed,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colors.onSurfaceVariant,
@@ -602,7 +597,7 @@ class _HabitsPageState extends State<HabitsPage> {
                   _loadHabits(showLoading: true);
                 },
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Повторить'),
+                label: Text(context.l10n.retry),
               ),
             ],
           ),
@@ -613,8 +608,8 @@ class _HabitsPageState extends State<HabitsPage> {
     final completedCount = _items.where((item) => item.isCompleted).length;
 
     final progressText = _items.isEmpty
-        ? 'Нет привычек на сегодня'
-        : '$completedCount из ${_items.length} выполнено';
+        ? context.l10n.noHabitsScheduledToday
+        : context.l10n.habitCompletionProgress(completedCount, _items.length);
 
     return RefreshIndicator(
       onRefresh: _loadHabits,
@@ -625,13 +620,7 @@ class _HabitsPageState extends State<HabitsPage> {
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                Text(
-                  'Сегодня',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
-                ),
+                Text(context.l10n.today, style: theme.textTheme.headlineMedium),
                 const SizedBox(height: 6),
                 Text(
                   _formatDate(DateTime.now()),
@@ -640,57 +629,53 @@ class _HabitsPageState extends State<HabitsPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: colors.primaryContainer,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.track_changes_rounded,
-                        size: 32,
-                        color: colors.onPrimaryContainer,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Прогресс за сегодня',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: colors.onPrimaryContainer,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              progressText,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: colors.onPrimaryContainer,
-                              ),
-                            ),
-                          ],
+                Card(
+                  color: colors.primaryContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.track_changes_rounded,
+                          size: 24,
+                          color: colors.onPrimaryContainer,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.l10n.todayProgress,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: colors.onPrimaryContainer,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                progressText,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colors.onPrimaryContainer,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'Мои привычки на сегодня',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                  context.l10n.habitsToday,
+                  style: theme.textTheme.titleLarge?.copyWith(),
                 ),
                 const SizedBox(height: 8),
                 if (_items.length > 1)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text(
-                      'Перетаскивай значок справа, чтобы изменить порядок.',
+                      context.l10n.dragToReorderHabit,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colors.onSurfaceVariant,
                       ),
@@ -725,13 +710,13 @@ class _HabitsPageState extends State<HabitsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Привычки',
+        title: Text(
+          context.l10n.habits,
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
           IconButton(
-            tooltip: 'Архив привычек',
+            tooltip: context.l10n.archiveHabits,
             onPressed: _isUpdating ? null : _openArchive,
             icon: const Icon(Icons.archive_outlined),
           ),
@@ -741,7 +726,7 @@ class _HabitsPageState extends State<HabitsPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isUpdating ? null : _showCreateHabitDialog,
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Новая привычка'),
+        label: Text(context.l10n.newHabit),
       ),
     );
   }
@@ -773,14 +758,14 @@ class _HabitEditorDialogState extends State<_HabitEditorDialog> {
   String? _titleError;
   String? _scheduleError;
 
-  static const List<String> _weekdayNames = [
-    'Пн',
-    'Вт',
-    'Ср',
-    'Чт',
-    'Пт',
-    'Сб',
-    'Вс',
+  List<String> get _weekdayNames => [
+    context.l10n.weekdayMon,
+    context.l10n.weekdayTue,
+    context.l10n.weekdayWed,
+    context.l10n.weekdayThu,
+    context.l10n.weekdayFri,
+    context.l10n.weekdaySat,
+    context.l10n.weekdaySun,
   ];
 
   @override
@@ -811,14 +796,14 @@ class _HabitEditorDialogState extends State<_HabitEditorDialog> {
 
     if (title.isEmpty) {
       setState(() {
-        _titleError = 'Введи название привычки';
+        _titleError = context.l10n.enterHabitName;
       });
       return;
     }
 
     if (_selectedWeekdays.isEmpty) {
       setState(() {
-        _scheduleError = 'Выбери хотя бы один день недели';
+        _scheduleError = context.l10n.chooseWeekday;
       });
       return;
     }
@@ -838,7 +823,7 @@ class _HabitEditorDialogState extends State<_HabitEditorDialog> {
 
     return AlertDialog(
       title: Text(
-        widget.isEditing ? 'Редактировать привычку' : 'Новая привычка',
+        widget.isEditing ? context.l10n.editHabit : context.l10n.newHabit,
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -851,8 +836,8 @@ class _HabitEditorDialogState extends State<_HabitEditorDialog> {
               maxLength: 100,
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
-                labelText: 'Название',
-                hintText: 'Например, читать 15 минут',
+                labelText: context.l10n.habitTitle,
+                hintText: context.l10n.habitHint,
                 errorText: _titleError,
                 border: const OutlineInputBorder(),
               ),
@@ -870,14 +855,14 @@ class _HabitEditorDialogState extends State<_HabitEditorDialog> {
               controller: _descriptionController,
               maxLines: 2,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Описание (необязательно)',
+              decoration: InputDecoration(
+                labelText: context.l10n.taskDescription,
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 20),
             Text(
-              'В какие дни выполнять?',
+              context.l10n.habitSchedule,
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -923,11 +908,13 @@ class _HabitEditorDialogState extends State<_HabitEditorDialog> {
           onPressed: () {
             Navigator.of(context).pop();
           },
-          child: const Text('Отмена'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           onPressed: _submit,
-          child: Text(widget.isEditing ? 'Сохранить' : 'Создать'),
+          child: Text(
+            widget.isEditing ? context.l10n.save : context.l10n.create,
+          ),
         ),
       ],
     );

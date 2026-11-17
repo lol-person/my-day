@@ -57,11 +57,12 @@ app.*.map.json
 !/.env.example
 /key.properties
 /android/key.properties
-/android/app/*.jks
-/android/app/*.keystore
-/android/app/*.p12
-/android/app/*.pem
-/android/app/*.key
+/android/**/*.jks
+/android/**/*.keystore
+/android/**/*.p12
+/android/**/*.pfx
+/android/**/*.pem
+/android/**/*.key
 
 # Local app database and JSON backups (root-level only; preserve test fixtures)
 /productivity_app.sqlite*

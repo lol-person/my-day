@@ -1,5 +1,3 @@
-// test/features/tasks/task_repository_test.dart
-
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivity_app/core/database/app_database.dart';
@@ -53,7 +51,6 @@ void main() {
 
     expect(await repository.getTasks(filter: TaskFilter.all), hasLength(2));
 
-    // Отмечаем выполненной именно вторую задачу.
     await repository.setCompleted(taskId: completedId, completed: true);
 
     final activeTasks = await repository.getTasks(filter: TaskFilter.active);
@@ -102,11 +99,39 @@ void main() {
     expect(tasks.single.isCompleted, isTrue);
   });
 
-  test('Удаляет задачу', () async {
+  test('Перемещает задачу в корзину и восстанавливает исходные поля', () async {
+    final taskId = await repository.createTask(
+      title: 'Удаляемая задача',
+      dueDate: DateTime(2026, 11, 20),
+      priority: 2,
+    );
+    await repository.setCompleted(taskId: taskId, completed: true);
+
+    await repository.moveTaskToTrash(taskId, deletedAt: DateTime(2026, 11, 16));
+
+    expect(await repository.getTasks(filter: TaskFilter.all), isEmpty);
+    final trashed = await repository.getDeletedTasks();
+    expect(trashed, hasLength(1));
+    expect(trashed.single.id, taskId);
+    expect(trashed.single.isCompleted, isTrue);
+    expect(trashed.single.priority, 2);
+    expect(trashed.single.dueDate, DateTime(2026, 11, 20));
+
+    await repository.restoreTask(taskId);
+
+    final restored = await repository.getTasks(filter: TaskFilter.all);
+    expect(restored, hasLength(1));
+    expect(restored.single.deletedAt, isNull);
+    expect(restored.single.isCompleted, isTrue);
+    expect(restored.single.priority, 2);
+  });
+
+  test('Окончательно удаляет задачу из корзины', () async {
     final taskId = await repository.createTask(title: 'Удаляемая задача');
+    await repository.moveTaskToTrash(taskId);
+    await repository.permanentlyDeleteTask(taskId);
 
-    await repository.deleteTask(taskId);
-
+    expect(await repository.getDeletedTasks(), isEmpty);
     expect(await repository.getTasks(filter: TaskFilter.all), isEmpty);
   });
 

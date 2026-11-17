@@ -327,6 +327,17 @@ class $HabitsTable extends Habits with TableInfo<$HabitsTable, Habit> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -335,6 +346,7 @@ class $HabitsTable extends Habits with TableInfo<$HabitsTable, Habit> {
     createdAt,
     sortOrder,
     isArchived,
+    deletedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -386,6 +398,12 @@ class $HabitsTable extends Habits with TableInfo<$HabitsTable, Habit> {
         isArchived.isAcceptableOrUnknown(data['is_archived']!, _isArchivedMeta),
       );
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -419,6 +437,10 @@ class $HabitsTable extends Habits with TableInfo<$HabitsTable, Habit> {
         DriftSqlType.bool,
         data['${effectivePrefix}is_archived'],
       )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
     );
   }
 
@@ -433,10 +455,9 @@ class Habit extends DataClass implements Insertable<Habit> {
   final String title;
   final String? description;
   final DateTime createdAt;
-
-  /// Положение привычки в пользовательском списке.
   final int sortOrder;
   final bool isArchived;
+  final DateTime? deletedAt;
   const Habit({
     required this.id,
     required this.title,
@@ -444,6 +465,7 @@ class Habit extends DataClass implements Insertable<Habit> {
     required this.createdAt,
     required this.sortOrder,
     required this.isArchived,
+    this.deletedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -456,6 +478,9 @@ class Habit extends DataClass implements Insertable<Habit> {
     map['created_at'] = Variable<DateTime>(createdAt);
     map['sort_order'] = Variable<int>(sortOrder);
     map['is_archived'] = Variable<bool>(isArchived);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     return map;
   }
 
@@ -469,6 +494,9 @@ class Habit extends DataClass implements Insertable<Habit> {
       createdAt: Value(createdAt),
       sortOrder: Value(sortOrder),
       isArchived: Value(isArchived),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
     );
   }
 
@@ -484,6 +512,7 @@ class Habit extends DataClass implements Insertable<Habit> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       isArchived: serializer.fromJson<bool>(json['isArchived']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
   }
   @override
@@ -496,6 +525,7 @@ class Habit extends DataClass implements Insertable<Habit> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'isArchived': serializer.toJson<bool>(isArchived),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
   }
 
@@ -506,6 +536,7 @@ class Habit extends DataClass implements Insertable<Habit> {
     DateTime? createdAt,
     int? sortOrder,
     bool? isArchived,
+    Value<DateTime?> deletedAt = const Value.absent(),
   }) => Habit(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -513,6 +544,7 @@ class Habit extends DataClass implements Insertable<Habit> {
     createdAt: createdAt ?? this.createdAt,
     sortOrder: sortOrder ?? this.sortOrder,
     isArchived: isArchived ?? this.isArchived,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
   Habit copyWithCompanion(HabitsCompanion data) {
     return Habit(
@@ -526,6 +558,7 @@ class Habit extends DataClass implements Insertable<Habit> {
       isArchived: data.isArchived.present
           ? data.isArchived.value
           : this.isArchived,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -537,14 +570,22 @@ class Habit extends DataClass implements Insertable<Habit> {
           ..write('description: $description, ')
           ..write('createdAt: $createdAt, ')
           ..write('sortOrder: $sortOrder, ')
-          ..write('isArchived: $isArchived')
+          ..write('isArchived: $isArchived, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, title, description, createdAt, sortOrder, isArchived);
+  int get hashCode => Object.hash(
+    id,
+    title,
+    description,
+    createdAt,
+    sortOrder,
+    isArchived,
+    deletedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -554,7 +595,8 @@ class Habit extends DataClass implements Insertable<Habit> {
           other.description == this.description &&
           other.createdAt == this.createdAt &&
           other.sortOrder == this.sortOrder &&
-          other.isArchived == this.isArchived);
+          other.isArchived == this.isArchived &&
+          other.deletedAt == this.deletedAt);
 }
 
 class HabitsCompanion extends UpdateCompanion<Habit> {
@@ -564,6 +606,7 @@ class HabitsCompanion extends UpdateCompanion<Habit> {
   final Value<DateTime> createdAt;
   final Value<int> sortOrder;
   final Value<bool> isArchived;
+  final Value<DateTime?> deletedAt;
   const HabitsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -571,6 +614,7 @@ class HabitsCompanion extends UpdateCompanion<Habit> {
     this.createdAt = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.isArchived = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   });
   HabitsCompanion.insert({
     this.id = const Value.absent(),
@@ -579,6 +623,7 @@ class HabitsCompanion extends UpdateCompanion<Habit> {
     this.createdAt = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.isArchived = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   }) : title = Value(title);
   static Insertable<Habit> custom({
     Expression<int>? id,
@@ -587,6 +632,7 @@ class HabitsCompanion extends UpdateCompanion<Habit> {
     Expression<DateTime>? createdAt,
     Expression<int>? sortOrder,
     Expression<bool>? isArchived,
+    Expression<DateTime>? deletedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -595,6 +641,7 @@ class HabitsCompanion extends UpdateCompanion<Habit> {
       if (createdAt != null) 'created_at': createdAt,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (isArchived != null) 'is_archived': isArchived,
+      if (deletedAt != null) 'deleted_at': deletedAt,
     });
   }
 
@@ -605,6 +652,7 @@ class HabitsCompanion extends UpdateCompanion<Habit> {
     Value<DateTime>? createdAt,
     Value<int>? sortOrder,
     Value<bool>? isArchived,
+    Value<DateTime?>? deletedAt,
   }) {
     return HabitsCompanion(
       id: id ?? this.id,
@@ -613,6 +661,7 @@ class HabitsCompanion extends UpdateCompanion<Habit> {
       createdAt: createdAt ?? this.createdAt,
       sortOrder: sortOrder ?? this.sortOrder,
       isArchived: isArchived ?? this.isArchived,
+      deletedAt: deletedAt ?? this.deletedAt,
     );
   }
 
@@ -637,6 +686,9 @@ class HabitsCompanion extends UpdateCompanion<Habit> {
     if (isArchived.present) {
       map['is_archived'] = Variable<bool>(isArchived.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     return map;
   }
 
@@ -648,7 +700,8 @@ class HabitsCompanion extends UpdateCompanion<Habit> {
           ..write('description: $description, ')
           ..write('createdAt: $createdAt, ')
           ..write('sortOrder: $sortOrder, ')
-          ..write('isArchived: $isArchived')
+          ..write('isArchived: $isArchived, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
@@ -1295,6 +1348,17 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1305,6 +1369,7 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     priority,
     isCompleted,
     sortOrder,
+    deletedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1371,6 +1436,12 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -1412,6 +1483,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
     );
   }
 
@@ -1426,16 +1501,11 @@ class Task extends DataClass implements Insertable<Task> {
   final String title;
   final String? description;
   final DateTime createdAt;
-
-  /// Необязательный срок выполнения.
   final DateTime? dueDate;
-
-  /// 0 — низкий, 1 — обычный, 2 — высокий.
   final int priority;
   final bool isCompleted;
-
-  /// Положение задачи в пользовательском списке.
   final int sortOrder;
+  final DateTime? deletedAt;
   const Task({
     required this.id,
     required this.title,
@@ -1445,6 +1515,7 @@ class Task extends DataClass implements Insertable<Task> {
     required this.priority,
     required this.isCompleted,
     required this.sortOrder,
+    this.deletedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1461,6 +1532,9 @@ class Task extends DataClass implements Insertable<Task> {
     map['priority'] = Variable<int>(priority);
     map['is_completed'] = Variable<bool>(isCompleted);
     map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     return map;
   }
 
@@ -1478,6 +1552,9 @@ class Task extends DataClass implements Insertable<Task> {
       priority: Value(priority),
       isCompleted: Value(isCompleted),
       sortOrder: Value(sortOrder),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
     );
   }
 
@@ -1495,6 +1572,7 @@ class Task extends DataClass implements Insertable<Task> {
       priority: serializer.fromJson<int>(json['priority']),
       isCompleted: serializer.fromJson<bool>(json['isCompleted']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
     );
   }
   @override
@@ -1509,6 +1587,7 @@ class Task extends DataClass implements Insertable<Task> {
       'priority': serializer.toJson<int>(priority),
       'isCompleted': serializer.toJson<bool>(isCompleted),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
     };
   }
 
@@ -1521,6 +1600,7 @@ class Task extends DataClass implements Insertable<Task> {
     int? priority,
     bool? isCompleted,
     int? sortOrder,
+    Value<DateTime?> deletedAt = const Value.absent(),
   }) => Task(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -1530,6 +1610,7 @@ class Task extends DataClass implements Insertable<Task> {
     priority: priority ?? this.priority,
     isCompleted: isCompleted ?? this.isCompleted,
     sortOrder: sortOrder ?? this.sortOrder,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
   );
   Task copyWithCompanion(TasksCompanion data) {
     return Task(
@@ -1545,6 +1626,7 @@ class Task extends DataClass implements Insertable<Task> {
           ? data.isCompleted.value
           : this.isCompleted,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
     );
   }
 
@@ -1558,7 +1640,8 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('dueDate: $dueDate, ')
           ..write('priority: $priority, ')
           ..write('isCompleted: $isCompleted, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('deletedAt: $deletedAt')
           ..write(')'))
         .toString();
   }
@@ -1573,6 +1656,7 @@ class Task extends DataClass implements Insertable<Task> {
     priority,
     isCompleted,
     sortOrder,
+    deletedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -1585,7 +1669,8 @@ class Task extends DataClass implements Insertable<Task> {
           other.dueDate == this.dueDate &&
           other.priority == this.priority &&
           other.isCompleted == this.isCompleted &&
-          other.sortOrder == this.sortOrder);
+          other.sortOrder == this.sortOrder &&
+          other.deletedAt == this.deletedAt);
 }
 
 class TasksCompanion extends UpdateCompanion<Task> {
@@ -1597,6 +1682,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<int> priority;
   final Value<bool> isCompleted;
   final Value<int> sortOrder;
+  final Value<DateTime?> deletedAt;
   const TasksCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -1606,6 +1692,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.priority = const Value.absent(),
     this.isCompleted = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   });
   TasksCompanion.insert({
     this.id = const Value.absent(),
@@ -1616,6 +1703,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.priority = const Value.absent(),
     this.isCompleted = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.deletedAt = const Value.absent(),
   }) : title = Value(title);
   static Insertable<Task> custom({
     Expression<int>? id,
@@ -1626,6 +1714,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<int>? priority,
     Expression<bool>? isCompleted,
     Expression<int>? sortOrder,
+    Expression<DateTime>? deletedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1636,6 +1725,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (priority != null) 'priority': priority,
       if (isCompleted != null) 'is_completed': isCompleted,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (deletedAt != null) 'deleted_at': deletedAt,
     });
   }
 
@@ -1648,6 +1738,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Value<int>? priority,
     Value<bool>? isCompleted,
     Value<int>? sortOrder,
+    Value<DateTime?>? deletedAt,
   }) {
     return TasksCompanion(
       id: id ?? this.id,
@@ -1658,6 +1749,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       priority: priority ?? this.priority,
       isCompleted: isCompleted ?? this.isCompleted,
       sortOrder: sortOrder ?? this.sortOrder,
+      deletedAt: deletedAt ?? this.deletedAt,
     );
   }
 
@@ -1688,6 +1780,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     return map;
   }
 
@@ -1701,7 +1796,912 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('dueDate: $dueDate, ')
           ..write('priority: $priority, ')
           ..write('isCompleted: $isCompleted, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $FocusTimerStateTable extends FocusTimerState
+    with TableInfo<$FocusTimerStateTable, FocusTimerStateData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FocusTimerStateTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _phaseMeta = const VerificationMeta('phase');
+  @override
+  late final GeneratedColumn<String> phase = GeneratedColumn<String>(
+    'phase',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _completedWorkSessionsMeta =
+      const VerificationMeta('completedWorkSessions');
+  @override
+  late final GeneratedColumn<int> completedWorkSessions = GeneratedColumn<int>(
+    'completed_work_sessions',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sessionStartedAtMeta = const VerificationMeta(
+    'sessionStartedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> sessionStartedAt =
+      GeneratedColumn<DateTime>(
+        'session_started_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _deadlineMeta = const VerificationMeta(
+    'deadline',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deadline = GeneratedColumn<DateTime>(
+    'deadline',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _segmentStartedAtMeta = const VerificationMeta(
+    'segmentStartedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> segmentStartedAt =
+      GeneratedColumn<DateTime>(
+        'segment_started_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _remainingSecondsMeta = const VerificationMeta(
+    'remainingSeconds',
+  );
+  @override
+  late final GeneratedColumn<int> remainingSeconds = GeneratedColumn<int>(
+    'remaining_seconds',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _elapsedSecondsMeta = const VerificationMeta(
+    'elapsedSeconds',
+  );
+  @override
+  late final GeneratedColumn<int> elapsedSeconds = GeneratedColumn<int>(
+    'elapsed_seconds',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    phase,
+    status,
+    completedWorkSessions,
+    sessionStartedAt,
+    deadline,
+    segmentStartedAt,
+    remainingSeconds,
+    elapsedSeconds,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'focus_timer_state';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FocusTimerStateData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('phase')) {
+      context.handle(
+        _phaseMeta,
+        phase.isAcceptableOrUnknown(data['phase']!, _phaseMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_phaseMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('completed_work_sessions')) {
+      context.handle(
+        _completedWorkSessionsMeta,
+        completedWorkSessions.isAcceptableOrUnknown(
+          data['completed_work_sessions']!,
+          _completedWorkSessionsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_completedWorkSessionsMeta);
+    }
+    if (data.containsKey('session_started_at')) {
+      context.handle(
+        _sessionStartedAtMeta,
+        sessionStartedAt.isAcceptableOrUnknown(
+          data['session_started_at']!,
+          _sessionStartedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('deadline')) {
+      context.handle(
+        _deadlineMeta,
+        deadline.isAcceptableOrUnknown(data['deadline']!, _deadlineMeta),
+      );
+    }
+    if (data.containsKey('segment_started_at')) {
+      context.handle(
+        _segmentStartedAtMeta,
+        segmentStartedAt.isAcceptableOrUnknown(
+          data['segment_started_at']!,
+          _segmentStartedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('remaining_seconds')) {
+      context.handle(
+        _remainingSecondsMeta,
+        remainingSeconds.isAcceptableOrUnknown(
+          data['remaining_seconds']!,
+          _remainingSecondsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('elapsed_seconds')) {
+      context.handle(
+        _elapsedSecondsMeta,
+        elapsedSeconds.isAcceptableOrUnknown(
+          data['elapsed_seconds']!,
+          _elapsedSecondsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_elapsedSecondsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FocusTimerStateData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FocusTimerStateData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      phase: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}phase'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      completedWorkSessions: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}completed_work_sessions'],
+      )!,
+      sessionStartedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}session_started_at'],
+      ),
+      deadline: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deadline'],
+      ),
+      segmentStartedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}segment_started_at'],
+      ),
+      remainingSeconds: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}remaining_seconds'],
+      ),
+      elapsedSeconds: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}elapsed_seconds'],
+      )!,
+    );
+  }
+
+  @override
+  $FocusTimerStateTable createAlias(String alias) {
+    return $FocusTimerStateTable(attachedDatabase, alias);
+  }
+}
+
+class FocusTimerStateData extends DataClass
+    implements Insertable<FocusTimerStateData> {
+  final int id;
+  final String phase;
+  final String status;
+  final int completedWorkSessions;
+  final DateTime? sessionStartedAt;
+  final DateTime? deadline;
+  final DateTime? segmentStartedAt;
+  final int? remainingSeconds;
+  final int elapsedSeconds;
+  const FocusTimerStateData({
+    required this.id,
+    required this.phase,
+    required this.status,
+    required this.completedWorkSessions,
+    this.sessionStartedAt,
+    this.deadline,
+    this.segmentStartedAt,
+    this.remainingSeconds,
+    required this.elapsedSeconds,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['phase'] = Variable<String>(phase);
+    map['status'] = Variable<String>(status);
+    map['completed_work_sessions'] = Variable<int>(completedWorkSessions);
+    if (!nullToAbsent || sessionStartedAt != null) {
+      map['session_started_at'] = Variable<DateTime>(sessionStartedAt);
+    }
+    if (!nullToAbsent || deadline != null) {
+      map['deadline'] = Variable<DateTime>(deadline);
+    }
+    if (!nullToAbsent || segmentStartedAt != null) {
+      map['segment_started_at'] = Variable<DateTime>(segmentStartedAt);
+    }
+    if (!nullToAbsent || remainingSeconds != null) {
+      map['remaining_seconds'] = Variable<int>(remainingSeconds);
+    }
+    map['elapsed_seconds'] = Variable<int>(elapsedSeconds);
+    return map;
+  }
+
+  FocusTimerStateCompanion toCompanion(bool nullToAbsent) {
+    return FocusTimerStateCompanion(
+      id: Value(id),
+      phase: Value(phase),
+      status: Value(status),
+      completedWorkSessions: Value(completedWorkSessions),
+      sessionStartedAt: sessionStartedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sessionStartedAt),
+      deadline: deadline == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deadline),
+      segmentStartedAt: segmentStartedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(segmentStartedAt),
+      remainingSeconds: remainingSeconds == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remainingSeconds),
+      elapsedSeconds: Value(elapsedSeconds),
+    );
+  }
+
+  factory FocusTimerStateData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FocusTimerStateData(
+      id: serializer.fromJson<int>(json['id']),
+      phase: serializer.fromJson<String>(json['phase']),
+      status: serializer.fromJson<String>(json['status']),
+      completedWorkSessions: serializer.fromJson<int>(
+        json['completedWorkSessions'],
+      ),
+      sessionStartedAt: serializer.fromJson<DateTime?>(
+        json['sessionStartedAt'],
+      ),
+      deadline: serializer.fromJson<DateTime?>(json['deadline']),
+      segmentStartedAt: serializer.fromJson<DateTime?>(
+        json['segmentStartedAt'],
+      ),
+      remainingSeconds: serializer.fromJson<int?>(json['remainingSeconds']),
+      elapsedSeconds: serializer.fromJson<int>(json['elapsedSeconds']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'phase': serializer.toJson<String>(phase),
+      'status': serializer.toJson<String>(status),
+      'completedWorkSessions': serializer.toJson<int>(completedWorkSessions),
+      'sessionStartedAt': serializer.toJson<DateTime?>(sessionStartedAt),
+      'deadline': serializer.toJson<DateTime?>(deadline),
+      'segmentStartedAt': serializer.toJson<DateTime?>(segmentStartedAt),
+      'remainingSeconds': serializer.toJson<int?>(remainingSeconds),
+      'elapsedSeconds': serializer.toJson<int>(elapsedSeconds),
+    };
+  }
+
+  FocusTimerStateData copyWith({
+    int? id,
+    String? phase,
+    String? status,
+    int? completedWorkSessions,
+    Value<DateTime?> sessionStartedAt = const Value.absent(),
+    Value<DateTime?> deadline = const Value.absent(),
+    Value<DateTime?> segmentStartedAt = const Value.absent(),
+    Value<int?> remainingSeconds = const Value.absent(),
+    int? elapsedSeconds,
+  }) => FocusTimerStateData(
+    id: id ?? this.id,
+    phase: phase ?? this.phase,
+    status: status ?? this.status,
+    completedWorkSessions: completedWorkSessions ?? this.completedWorkSessions,
+    sessionStartedAt: sessionStartedAt.present
+        ? sessionStartedAt.value
+        : this.sessionStartedAt,
+    deadline: deadline.present ? deadline.value : this.deadline,
+    segmentStartedAt: segmentStartedAt.present
+        ? segmentStartedAt.value
+        : this.segmentStartedAt,
+    remainingSeconds: remainingSeconds.present
+        ? remainingSeconds.value
+        : this.remainingSeconds,
+    elapsedSeconds: elapsedSeconds ?? this.elapsedSeconds,
+  );
+  FocusTimerStateData copyWithCompanion(FocusTimerStateCompanion data) {
+    return FocusTimerStateData(
+      id: data.id.present ? data.id.value : this.id,
+      phase: data.phase.present ? data.phase.value : this.phase,
+      status: data.status.present ? data.status.value : this.status,
+      completedWorkSessions: data.completedWorkSessions.present
+          ? data.completedWorkSessions.value
+          : this.completedWorkSessions,
+      sessionStartedAt: data.sessionStartedAt.present
+          ? data.sessionStartedAt.value
+          : this.sessionStartedAt,
+      deadline: data.deadline.present ? data.deadline.value : this.deadline,
+      segmentStartedAt: data.segmentStartedAt.present
+          ? data.segmentStartedAt.value
+          : this.segmentStartedAt,
+      remainingSeconds: data.remainingSeconds.present
+          ? data.remainingSeconds.value
+          : this.remainingSeconds,
+      elapsedSeconds: data.elapsedSeconds.present
+          ? data.elapsedSeconds.value
+          : this.elapsedSeconds,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FocusTimerStateData(')
+          ..write('id: $id, ')
+          ..write('phase: $phase, ')
+          ..write('status: $status, ')
+          ..write('completedWorkSessions: $completedWorkSessions, ')
+          ..write('sessionStartedAt: $sessionStartedAt, ')
+          ..write('deadline: $deadline, ')
+          ..write('segmentStartedAt: $segmentStartedAt, ')
+          ..write('remainingSeconds: $remainingSeconds, ')
+          ..write('elapsedSeconds: $elapsedSeconds')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    phase,
+    status,
+    completedWorkSessions,
+    sessionStartedAt,
+    deadline,
+    segmentStartedAt,
+    remainingSeconds,
+    elapsedSeconds,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FocusTimerStateData &&
+          other.id == this.id &&
+          other.phase == this.phase &&
+          other.status == this.status &&
+          other.completedWorkSessions == this.completedWorkSessions &&
+          other.sessionStartedAt == this.sessionStartedAt &&
+          other.deadline == this.deadline &&
+          other.segmentStartedAt == this.segmentStartedAt &&
+          other.remainingSeconds == this.remainingSeconds &&
+          other.elapsedSeconds == this.elapsedSeconds);
+}
+
+class FocusTimerStateCompanion extends UpdateCompanion<FocusTimerStateData> {
+  final Value<int> id;
+  final Value<String> phase;
+  final Value<String> status;
+  final Value<int> completedWorkSessions;
+  final Value<DateTime?> sessionStartedAt;
+  final Value<DateTime?> deadline;
+  final Value<DateTime?> segmentStartedAt;
+  final Value<int?> remainingSeconds;
+  final Value<int> elapsedSeconds;
+  const FocusTimerStateCompanion({
+    this.id = const Value.absent(),
+    this.phase = const Value.absent(),
+    this.status = const Value.absent(),
+    this.completedWorkSessions = const Value.absent(),
+    this.sessionStartedAt = const Value.absent(),
+    this.deadline = const Value.absent(),
+    this.segmentStartedAt = const Value.absent(),
+    this.remainingSeconds = const Value.absent(),
+    this.elapsedSeconds = const Value.absent(),
+  });
+  FocusTimerStateCompanion.insert({
+    this.id = const Value.absent(),
+    required String phase,
+    required String status,
+    required int completedWorkSessions,
+    this.sessionStartedAt = const Value.absent(),
+    this.deadline = const Value.absent(),
+    this.segmentStartedAt = const Value.absent(),
+    this.remainingSeconds = const Value.absent(),
+    required int elapsedSeconds,
+  }) : phase = Value(phase),
+       status = Value(status),
+       completedWorkSessions = Value(completedWorkSessions),
+       elapsedSeconds = Value(elapsedSeconds);
+  static Insertable<FocusTimerStateData> custom({
+    Expression<int>? id,
+    Expression<String>? phase,
+    Expression<String>? status,
+    Expression<int>? completedWorkSessions,
+    Expression<DateTime>? sessionStartedAt,
+    Expression<DateTime>? deadline,
+    Expression<DateTime>? segmentStartedAt,
+    Expression<int>? remainingSeconds,
+    Expression<int>? elapsedSeconds,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (phase != null) 'phase': phase,
+      if (status != null) 'status': status,
+      if (completedWorkSessions != null)
+        'completed_work_sessions': completedWorkSessions,
+      if (sessionStartedAt != null) 'session_started_at': sessionStartedAt,
+      if (deadline != null) 'deadline': deadline,
+      if (segmentStartedAt != null) 'segment_started_at': segmentStartedAt,
+      if (remainingSeconds != null) 'remaining_seconds': remainingSeconds,
+      if (elapsedSeconds != null) 'elapsed_seconds': elapsedSeconds,
+    });
+  }
+
+  FocusTimerStateCompanion copyWith({
+    Value<int>? id,
+    Value<String>? phase,
+    Value<String>? status,
+    Value<int>? completedWorkSessions,
+    Value<DateTime?>? sessionStartedAt,
+    Value<DateTime?>? deadline,
+    Value<DateTime?>? segmentStartedAt,
+    Value<int?>? remainingSeconds,
+    Value<int>? elapsedSeconds,
+  }) {
+    return FocusTimerStateCompanion(
+      id: id ?? this.id,
+      phase: phase ?? this.phase,
+      status: status ?? this.status,
+      completedWorkSessions:
+          completedWorkSessions ?? this.completedWorkSessions,
+      sessionStartedAt: sessionStartedAt ?? this.sessionStartedAt,
+      deadline: deadline ?? this.deadline,
+      segmentStartedAt: segmentStartedAt ?? this.segmentStartedAt,
+      remainingSeconds: remainingSeconds ?? this.remainingSeconds,
+      elapsedSeconds: elapsedSeconds ?? this.elapsedSeconds,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (phase.present) {
+      map['phase'] = Variable<String>(phase.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (completedWorkSessions.present) {
+      map['completed_work_sessions'] = Variable<int>(
+        completedWorkSessions.value,
+      );
+    }
+    if (sessionStartedAt.present) {
+      map['session_started_at'] = Variable<DateTime>(sessionStartedAt.value);
+    }
+    if (deadline.present) {
+      map['deadline'] = Variable<DateTime>(deadline.value);
+    }
+    if (segmentStartedAt.present) {
+      map['segment_started_at'] = Variable<DateTime>(segmentStartedAt.value);
+    }
+    if (remainingSeconds.present) {
+      map['remaining_seconds'] = Variable<int>(remainingSeconds.value);
+    }
+    if (elapsedSeconds.present) {
+      map['elapsed_seconds'] = Variable<int>(elapsedSeconds.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FocusTimerStateCompanion(')
+          ..write('id: $id, ')
+          ..write('phase: $phase, ')
+          ..write('status: $status, ')
+          ..write('completedWorkSessions: $completedWorkSessions, ')
+          ..write('sessionStartedAt: $sessionStartedAt, ')
+          ..write('deadline: $deadline, ')
+          ..write('segmentStartedAt: $segmentStartedAt, ')
+          ..write('remainingSeconds: $remainingSeconds, ')
+          ..write('elapsedSeconds: $elapsedSeconds')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $FocusSessionsTable extends FocusSessions
+    with TableInfo<$FocusSessionsTable, FocusSession> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FocusSessionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _startedAtMeta = const VerificationMeta(
+    'startedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> startedAt = GeneratedColumn<DateTime>(
+    'started_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _completedAtMeta = const VerificationMeta(
+    'completedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> completedAt = GeneratedColumn<DateTime>(
+    'completed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _durationSecondsMeta = const VerificationMeta(
+    'durationSeconds',
+  );
+  @override
+  late final GeneratedColumn<int> durationSeconds = GeneratedColumn<int>(
+    'duration_seconds',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    startedAt,
+    completedAt,
+    durationSeconds,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'focus_sessions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FocusSession> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('started_at')) {
+      context.handle(
+        _startedAtMeta,
+        startedAt.isAcceptableOrUnknown(data['started_at']!, _startedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startedAtMeta);
+    }
+    if (data.containsKey('completed_at')) {
+      context.handle(
+        _completedAtMeta,
+        completedAt.isAcceptableOrUnknown(
+          data['completed_at']!,
+          _completedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_completedAtMeta);
+    }
+    if (data.containsKey('duration_seconds')) {
+      context.handle(
+        _durationSecondsMeta,
+        durationSeconds.isAcceptableOrUnknown(
+          data['duration_seconds']!,
+          _durationSecondsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_durationSecondsMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FocusSession map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FocusSession(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      startedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}started_at'],
+      )!,
+      completedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}completed_at'],
+      )!,
+      durationSeconds: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}duration_seconds'],
+      )!,
+    );
+  }
+
+  @override
+  $FocusSessionsTable createAlias(String alias) {
+    return $FocusSessionsTable(attachedDatabase, alias);
+  }
+}
+
+class FocusSession extends DataClass implements Insertable<FocusSession> {
+  final int id;
+  final DateTime startedAt;
+  final DateTime completedAt;
+  final int durationSeconds;
+  const FocusSession({
+    required this.id,
+    required this.startedAt,
+    required this.completedAt,
+    required this.durationSeconds,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['started_at'] = Variable<DateTime>(startedAt);
+    map['completed_at'] = Variable<DateTime>(completedAt);
+    map['duration_seconds'] = Variable<int>(durationSeconds);
+    return map;
+  }
+
+  FocusSessionsCompanion toCompanion(bool nullToAbsent) {
+    return FocusSessionsCompanion(
+      id: Value(id),
+      startedAt: Value(startedAt),
+      completedAt: Value(completedAt),
+      durationSeconds: Value(durationSeconds),
+    );
+  }
+
+  factory FocusSession.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FocusSession(
+      id: serializer.fromJson<int>(json['id']),
+      startedAt: serializer.fromJson<DateTime>(json['startedAt']),
+      completedAt: serializer.fromJson<DateTime>(json['completedAt']),
+      durationSeconds: serializer.fromJson<int>(json['durationSeconds']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'startedAt': serializer.toJson<DateTime>(startedAt),
+      'completedAt': serializer.toJson<DateTime>(completedAt),
+      'durationSeconds': serializer.toJson<int>(durationSeconds),
+    };
+  }
+
+  FocusSession copyWith({
+    int? id,
+    DateTime? startedAt,
+    DateTime? completedAt,
+    int? durationSeconds,
+  }) => FocusSession(
+    id: id ?? this.id,
+    startedAt: startedAt ?? this.startedAt,
+    completedAt: completedAt ?? this.completedAt,
+    durationSeconds: durationSeconds ?? this.durationSeconds,
+  );
+  FocusSession copyWithCompanion(FocusSessionsCompanion data) {
+    return FocusSession(
+      id: data.id.present ? data.id.value : this.id,
+      startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
+      completedAt: data.completedAt.present
+          ? data.completedAt.value
+          : this.completedAt,
+      durationSeconds: data.durationSeconds.present
+          ? data.durationSeconds.value
+          : this.durationSeconds,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FocusSession(')
+          ..write('id: $id, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('completedAt: $completedAt, ')
+          ..write('durationSeconds: $durationSeconds')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, startedAt, completedAt, durationSeconds);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FocusSession &&
+          other.id == this.id &&
+          other.startedAt == this.startedAt &&
+          other.completedAt == this.completedAt &&
+          other.durationSeconds == this.durationSeconds);
+}
+
+class FocusSessionsCompanion extends UpdateCompanion<FocusSession> {
+  final Value<int> id;
+  final Value<DateTime> startedAt;
+  final Value<DateTime> completedAt;
+  final Value<int> durationSeconds;
+  const FocusSessionsCompanion({
+    this.id = const Value.absent(),
+    this.startedAt = const Value.absent(),
+    this.completedAt = const Value.absent(),
+    this.durationSeconds = const Value.absent(),
+  });
+  FocusSessionsCompanion.insert({
+    this.id = const Value.absent(),
+    required DateTime startedAt,
+    required DateTime completedAt,
+    required int durationSeconds,
+  }) : startedAt = Value(startedAt),
+       completedAt = Value(completedAt),
+       durationSeconds = Value(durationSeconds);
+  static Insertable<FocusSession> custom({
+    Expression<int>? id,
+    Expression<DateTime>? startedAt,
+    Expression<DateTime>? completedAt,
+    Expression<int>? durationSeconds,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (startedAt != null) 'started_at': startedAt,
+      if (completedAt != null) 'completed_at': completedAt,
+      if (durationSeconds != null) 'duration_seconds': durationSeconds,
+    });
+  }
+
+  FocusSessionsCompanion copyWith({
+    Value<int>? id,
+    Value<DateTime>? startedAt,
+    Value<DateTime>? completedAt,
+    Value<int>? durationSeconds,
+  }) {
+    return FocusSessionsCompanion(
+      id: id ?? this.id,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (startedAt.present) {
+      map['started_at'] = Variable<DateTime>(startedAt.value);
+    }
+    if (completedAt.present) {
+      map['completed_at'] = Variable<DateTime>(completedAt.value);
+    }
+    if (durationSeconds.present) {
+      map['duration_seconds'] = Variable<int>(durationSeconds.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FocusSessionsCompanion(')
+          ..write('id: $id, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('completedAt: $completedAt, ')
+          ..write('durationSeconds: $durationSeconds')
           ..write(')'))
         .toString();
   }
@@ -1716,6 +2716,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $HabitScheduleDaysTable(this);
   late final $HabitEntriesTable habitEntries = $HabitEntriesTable(this);
   late final $TasksTable tasks = $TasksTable(this);
+  late final $FocusTimerStateTable focusTimerState = $FocusTimerStateTable(
+    this,
+  );
+  late final $FocusSessionsTable focusSessions = $FocusSessionsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1726,6 +2730,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     habitScheduleDays,
     habitEntries,
     tasks,
+    focusTimerState,
+    focusSessions,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -1908,6 +2914,7 @@ typedef $$HabitsTableCreateCompanionBuilder = HabitsCompanion Function({
   Value<DateTime> createdAt,
   Value<int> sortOrder,
   Value<bool> isArchived,
+  Value<DateTime?> deletedAt,
 });
 typedef $$HabitsTableUpdateCompanionBuilder = HabitsCompanion Function({
   Value<int> id,
@@ -1916,6 +2923,7 @@ typedef $$HabitsTableUpdateCompanionBuilder = HabitsCompanion Function({
   Value<DateTime> createdAt,
   Value<int> sortOrder,
   Value<bool> isArchived,
+  Value<DateTime?> deletedAt,
 });
 
 final class $$HabitsTableReferences
@@ -1998,6 +3006,11 @@ class $$HabitsTableFilterComposer
 
   ColumnFilters<bool> get isArchived => $composableBuilder(
     column: $table.isArchived,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2090,6 +3103,11 @@ class $$HabitsTableOrderingComposer
     column: $table.isArchived,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$HabitsTableAnnotationComposer
@@ -2122,6 +3140,9 @@ class $$HabitsTableAnnotationComposer
     column: $table.isArchived,
     builder: (column) => column,
   );
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   Expression<T> habitScheduleDaysRefs<T extends Object>(
     Expression<T> Function($$HabitScheduleDaysTableAnnotationComposer a) f,
@@ -2212,6 +3233,7 @@ class $$HabitsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<bool> isArchived = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
               }) => HabitsCompanion(
                 id: id,
                 title: title,
@@ -2219,6 +3241,7 @@ class $$HabitsTableTableManager
                 createdAt: createdAt,
                 sortOrder: sortOrder,
                 isArchived: isArchived,
+                deletedAt: deletedAt,
               ),
           createCompanionCallback:
               ({
@@ -2228,6 +3251,7 @@ class $$HabitsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<bool> isArchived = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
               }) => HabitsCompanion.insert(
                 id: id,
                 title: title,
@@ -2235,6 +3259,7 @@ class $$HabitsTableTableManager
                 createdAt: createdAt,
                 sortOrder: sortOrder,
                 isArchived: isArchived,
+                deletedAt: deletedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -2899,6 +3924,7 @@ typedef $$TasksTableCreateCompanionBuilder = TasksCompanion Function({
   Value<int> priority,
   Value<bool> isCompleted,
   Value<int> sortOrder,
+  Value<DateTime?> deletedAt,
 });
 typedef $$TasksTableUpdateCompanionBuilder = TasksCompanion Function({
   Value<int> id,
@@ -2909,6 +3935,7 @@ typedef $$TasksTableUpdateCompanionBuilder = TasksCompanion Function({
   Value<int> priority,
   Value<bool> isCompleted,
   Value<int> sortOrder,
+  Value<DateTime?> deletedAt,
 });
 
 class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
@@ -2956,6 +3983,11 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -3008,6 +4040,11 @@ class $$TasksTableOrderingComposer
     column: $table.sortOrder,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TasksTableAnnotationComposer
@@ -3046,6 +4083,9 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 }
 
 class $$TasksTableTableManager
@@ -3084,6 +4124,7 @@ class $$TasksTableTableManager
                 Value<int> priority = const Value.absent(),
                 Value<bool> isCompleted = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
               }) => TasksCompanion(
                 id: id,
                 title: title,
@@ -3093,6 +4134,7 @@ class $$TasksTableTableManager
                 priority: priority,
                 isCompleted: isCompleted,
                 sortOrder: sortOrder,
+                deletedAt: deletedAt,
               ),
           createCompanionCallback:
               ({
@@ -3104,6 +4146,7 @@ class $$TasksTableTableManager
                 Value<int> priority = const Value.absent(),
                 Value<bool> isCompleted = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
               }) => TasksCompanion.insert(
                 id: id,
                 title: title,
@@ -3113,6 +4156,7 @@ class $$TasksTableTableManager
                 priority: priority,
                 isCompleted: isCompleted,
                 sortOrder: sortOrder,
+                deletedAt: deletedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -3145,6 +4189,495 @@ typedef $$TasksTableProcessedTableManager =
       Task,
       PrefetchHooks Function()
     >;
+typedef $$FocusTimerStateTableCreateCompanionBuilder =
+    FocusTimerStateCompanion Function({
+      Value<int> id,
+      required String phase,
+      required String status,
+      required int completedWorkSessions,
+      Value<DateTime?> sessionStartedAt,
+      Value<DateTime?> deadline,
+      Value<DateTime?> segmentStartedAt,
+      Value<int?> remainingSeconds,
+      required int elapsedSeconds,
+    });
+typedef $$FocusTimerStateTableUpdateCompanionBuilder =
+    FocusTimerStateCompanion Function({
+      Value<int> id,
+      Value<String> phase,
+      Value<String> status,
+      Value<int> completedWorkSessions,
+      Value<DateTime?> sessionStartedAt,
+      Value<DateTime?> deadline,
+      Value<DateTime?> segmentStartedAt,
+      Value<int?> remainingSeconds,
+      Value<int> elapsedSeconds,
+    });
+
+class $$FocusTimerStateTableFilterComposer
+    extends Composer<_$AppDatabase, $FocusTimerStateTable> {
+  $$FocusTimerStateTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get phase => $composableBuilder(
+    column: $table.phase,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get completedWorkSessions => $composableBuilder(
+    column: $table.completedWorkSessions,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get sessionStartedAt => $composableBuilder(
+    column: $table.sessionStartedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deadline => $composableBuilder(
+    column: $table.deadline,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get segmentStartedAt => $composableBuilder(
+    column: $table.segmentStartedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get remainingSeconds => $composableBuilder(
+    column: $table.remainingSeconds,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get elapsedSeconds => $composableBuilder(
+    column: $table.elapsedSeconds,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$FocusTimerStateTableOrderingComposer
+    extends Composer<_$AppDatabase, $FocusTimerStateTable> {
+  $$FocusTimerStateTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get phase => $composableBuilder(
+    column: $table.phase,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get completedWorkSessions => $composableBuilder(
+    column: $table.completedWorkSessions,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get sessionStartedAt => $composableBuilder(
+    column: $table.sessionStartedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deadline => $composableBuilder(
+    column: $table.deadline,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get segmentStartedAt => $composableBuilder(
+    column: $table.segmentStartedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get remainingSeconds => $composableBuilder(
+    column: $table.remainingSeconds,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get elapsedSeconds => $composableBuilder(
+    column: $table.elapsedSeconds,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FocusTimerStateTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FocusTimerStateTable> {
+  $$FocusTimerStateTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get phase =>
+      $composableBuilder(column: $table.phase, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get completedWorkSessions => $composableBuilder(
+    column: $table.completedWorkSessions,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get sessionStartedAt => $composableBuilder(
+    column: $table.sessionStartedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get deadline =>
+      $composableBuilder(column: $table.deadline, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get segmentStartedAt => $composableBuilder(
+    column: $table.segmentStartedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get remainingSeconds => $composableBuilder(
+    column: $table.remainingSeconds,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get elapsedSeconds => $composableBuilder(
+    column: $table.elapsedSeconds,
+    builder: (column) => column,
+  );
+}
+
+class $$FocusTimerStateTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FocusTimerStateTable,
+          FocusTimerStateData,
+          $$FocusTimerStateTableFilterComposer,
+          $$FocusTimerStateTableOrderingComposer,
+          $$FocusTimerStateTableAnnotationComposer,
+          $$FocusTimerStateTableCreateCompanionBuilder,
+          $$FocusTimerStateTableUpdateCompanionBuilder,
+          (
+            FocusTimerStateData,
+            BaseReferences<
+              _$AppDatabase,
+              $FocusTimerStateTable,
+              FocusTimerStateData
+            >,
+          ),
+          FocusTimerStateData,
+          PrefetchHooks Function()
+        > {
+  $$FocusTimerStateTableTableManager(
+    _$AppDatabase db,
+    $FocusTimerStateTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FocusTimerStateTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FocusTimerStateTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FocusTimerStateTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> phase = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> completedWorkSessions = const Value.absent(),
+                Value<DateTime?> sessionStartedAt = const Value.absent(),
+                Value<DateTime?> deadline = const Value.absent(),
+                Value<DateTime?> segmentStartedAt = const Value.absent(),
+                Value<int?> remainingSeconds = const Value.absent(),
+                Value<int> elapsedSeconds = const Value.absent(),
+              }) => FocusTimerStateCompanion(
+                id: id,
+                phase: phase,
+                status: status,
+                completedWorkSessions: completedWorkSessions,
+                sessionStartedAt: sessionStartedAt,
+                deadline: deadline,
+                segmentStartedAt: segmentStartedAt,
+                remainingSeconds: remainingSeconds,
+                elapsedSeconds: elapsedSeconds,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String phase,
+                required String status,
+                required int completedWorkSessions,
+                Value<DateTime?> sessionStartedAt = const Value.absent(),
+                Value<DateTime?> deadline = const Value.absent(),
+                Value<DateTime?> segmentStartedAt = const Value.absent(),
+                Value<int?> remainingSeconds = const Value.absent(),
+                required int elapsedSeconds,
+              }) => FocusTimerStateCompanion.insert(
+                id: id,
+                phase: phase,
+                status: status,
+                completedWorkSessions: completedWorkSessions,
+                sessionStartedAt: sessionStartedAt,
+                deadline: deadline,
+                segmentStartedAt: segmentStartedAt,
+                remainingSeconds: remainingSeconds,
+                elapsedSeconds: elapsedSeconds,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$FocusTimerStateTable, FocusTimerStateData>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $FocusTimerStateTable,
+                    FocusTimerStateData
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$FocusTimerStateTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FocusTimerStateTable,
+      FocusTimerStateData,
+      $$FocusTimerStateTableFilterComposer,
+      $$FocusTimerStateTableOrderingComposer,
+      $$FocusTimerStateTableAnnotationComposer,
+      $$FocusTimerStateTableCreateCompanionBuilder,
+      $$FocusTimerStateTableUpdateCompanionBuilder,
+      (
+        FocusTimerStateData,
+        BaseReferences<
+          _$AppDatabase,
+          $FocusTimerStateTable,
+          FocusTimerStateData
+        >,
+      ),
+      FocusTimerStateData,
+      PrefetchHooks Function()
+    >;
+typedef $$FocusSessionsTableCreateCompanionBuilder =
+    FocusSessionsCompanion Function({
+      Value<int> id,
+      required DateTime startedAt,
+      required DateTime completedAt,
+      required int durationSeconds,
+    });
+typedef $$FocusSessionsTableUpdateCompanionBuilder =
+    FocusSessionsCompanion Function({
+      Value<int> id,
+      Value<DateTime> startedAt,
+      Value<DateTime> completedAt,
+      Value<int> durationSeconds,
+    });
+
+class $$FocusSessionsTableFilterComposer
+    extends Composer<_$AppDatabase, $FocusSessionsTable> {
+  $$FocusSessionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get durationSeconds => $composableBuilder(
+    column: $table.durationSeconds,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$FocusSessionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FocusSessionsTable> {
+  $$FocusSessionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get startedAt => $composableBuilder(
+    column: $table.startedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get durationSeconds => $composableBuilder(
+    column: $table.durationSeconds,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FocusSessionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FocusSessionsTable> {
+  $$FocusSessionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get startedAt =>
+      $composableBuilder(column: $table.startedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get durationSeconds => $composableBuilder(
+    column: $table.durationSeconds,
+    builder: (column) => column,
+  );
+}
+
+class $$FocusSessionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FocusSessionsTable,
+          FocusSession,
+          $$FocusSessionsTableFilterComposer,
+          $$FocusSessionsTableOrderingComposer,
+          $$FocusSessionsTableAnnotationComposer,
+          $$FocusSessionsTableCreateCompanionBuilder,
+          $$FocusSessionsTableUpdateCompanionBuilder,
+          (
+            FocusSession,
+            BaseReferences<_$AppDatabase, $FocusSessionsTable, FocusSession>,
+          ),
+          FocusSession,
+          PrefetchHooks Function()
+        > {
+  $$FocusSessionsTableTableManager(_$AppDatabase db, $FocusSessionsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FocusSessionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FocusSessionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FocusSessionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<DateTime> startedAt = const Value.absent(),
+                Value<DateTime> completedAt = const Value.absent(),
+                Value<int> durationSeconds = const Value.absent(),
+              }) => FocusSessionsCompanion(
+                id: id,
+                startedAt: startedAt,
+                completedAt: completedAt,
+                durationSeconds: durationSeconds,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required DateTime startedAt,
+                required DateTime completedAt,
+                required int durationSeconds,
+              }) => FocusSessionsCompanion.insert(
+                id: id,
+                startedAt: startedAt,
+                completedAt: completedAt,
+                durationSeconds: durationSeconds,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$FocusSessionsTable, FocusSession>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $FocusSessionsTable,
+                    FocusSession
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$FocusSessionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FocusSessionsTable,
+      FocusSession,
+      $$FocusSessionsTableFilterComposer,
+      $$FocusSessionsTableOrderingComposer,
+      $$FocusSessionsTableAnnotationComposer,
+      $$FocusSessionsTableCreateCompanionBuilder,
+      $$FocusSessionsTableUpdateCompanionBuilder,
+      (
+        FocusSession,
+        BaseReferences<_$AppDatabase, $FocusSessionsTable, FocusSession>,
+      ),
+      FocusSession,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3159,4 +4692,8 @@ class $AppDatabaseManager {
       $$HabitEntriesTableTableManager(_db, _db.habitEntries);
   $$TasksTableTableManager get tasks =>
       $$TasksTableTableManager(_db, _db.tasks);
+  $$FocusTimerStateTableTableManager get focusTimerState =>
+      $$FocusTimerStateTableTableManager(_db, _db.focusTimerState);
+  $$FocusSessionsTableTableManager get focusSessions =>
+      $$FocusSessionsTableTableManager(_db, _db.focusSessions);
 }

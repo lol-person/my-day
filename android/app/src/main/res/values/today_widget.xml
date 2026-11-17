@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">Мой день</string>
+    <color name="today_widget_surface">#F5F0F7</color>
+    <color name="today_widget_surface_container">#EAE4EF</color>
+    <color name="today_widget_text_primary">#1D1A20</color>
+    <color name="today_widget_text_secondary">#49454F</color>
+    <color name="today_widget_accent">#6750A4</color>
+    <color name="today_widget_progress_track">#D0C9D8</color>
+    <string name="today_widget_title">Сегодня</string>
+    <string name="today_widget_subtitle">Сводка на сегодня</string>
+    <string name="today_widget_empty">Пока нет дел на сегодня</string>
+    <string name="today_widget_habits_label">Привычки</string>
+    <string name="today_widget_tasks_label">Задачи</string>
+    <string name="today_widget_progress_label">Прогресс</string>
+    <string name="today_widget_habits_description">Привычки сегодня: %1$d из %2$d. Открыть привычки</string>
+    <string name="today_widget_tasks_description">Активных задач: %1$d. Открыть задачи</string>
+    <string name="today_widget_progress_description">Прогресс привычек: %1$d процентов. Открыть статистику</string>
+    <string name="today_widget_description">Прогресс привычек и задачи на сегодня</string>
+</resources>

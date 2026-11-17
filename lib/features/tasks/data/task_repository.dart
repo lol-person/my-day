@@ -1,9 +1,8 @@
-// lib/features/tasks/data/task_repository.dart
-
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/widgets/today_widget_service.dart';
 
 enum TaskFilter { active, completed, all }
 
@@ -15,9 +14,10 @@ class TaskRepository {
   Future<void> _syncRemindersSafely() async {
     try {
       await LocalNotificationService.instance.syncAll(_database);
-    } catch (_) {
-      // Ошибка уведомлений не должна отменять операцию с задачей.
-    }
+    } catch (_) {}
+    try {
+      await TodayWidgetService.update(_database);
+    } catch (_) {}
   }
 
   void _validateTask({required String title, required int priority}) {
@@ -74,6 +74,7 @@ class TaskRepository {
     final id = await _database.transaction(() async {
       final firstTask =
           await (_database.select(_database.tasks)
+                ..where((task) => task.deletedAt.isNull())
                 ..orderBy([
                   (task) => OrderingTerm.asc(task.sortOrder),
                   (task) => OrderingTerm.desc(task.priority),
@@ -83,7 +84,6 @@ class TaskRepository {
                 ..limit(1))
               .getSingleOrNull();
 
-      // Новые задачи появляются вверху списка.
       final nextSortOrder = firstTask == null ? 0 : firstTask.sortOrder - 1;
 
       return _database
@@ -121,7 +121,6 @@ class TaskRepository {
       throw StateError('Задача с ID $taskId не найдена.');
     }
 
-    // Редактирование задачи не меняет её положение в списке.
     await (_database.update(
       _database.tasks,
     )..where((task) => task.id.equals(taskId))).write(
@@ -137,7 +136,8 @@ class TaskRepository {
   }
 
   Future<List<Task>> getTasks({TaskFilter filter = TaskFilter.active}) async {
-    final query = _database.select(_database.tasks);
+    final query = _database.select(_database.tasks)
+      ..where((task) => task.deletedAt.isNull());
 
     if (filter == TaskFilter.active) {
       query.where((task) => task.isCompleted.equals(false));
@@ -147,8 +147,7 @@ class TaskRepository {
 
     query.orderBy([
       (task) => OrderingTerm.asc(task.sortOrder),
-      // Дополнительная сортировка нужна для старых записей,
-      // у которых до миграции не было индивидуального порядка.
+
       (task) => OrderingTerm.desc(task.priority),
       (task) => OrderingTerm.desc(task.createdAt),
       (task) => OrderingTerm.asc(task.id),
@@ -157,22 +156,20 @@ class TaskRepository {
     return query.get();
   }
 
-  /// Сохраняет порядок задач сверху вниз.
-  ///
-  /// Передай все ID задач текущего фильтра в новом порядке.
-  /// Порядок задач, не входящих в этот фильтр, сохраняется.
   Future<void> reorderTasks({
     required List<int> orderedTaskIds,
     TaskFilter filter = TaskFilter.active,
   }) async {
     await _database.transaction(() async {
       final allTasks =
-          await (_database.select(_database.tasks)..orderBy([
-                (task) => OrderingTerm.asc(task.sortOrder),
-                (task) => OrderingTerm.desc(task.priority),
-                (task) => OrderingTerm.desc(task.createdAt),
-                (task) => OrderingTerm.asc(task.id),
-              ]))
+          await (_database.select(_database.tasks)
+                ..where((task) => task.deletedAt.isNull())
+                ..orderBy([
+                  (task) => OrderingTerm.asc(task.sortOrder),
+                  (task) => OrderingTerm.desc(task.priority),
+                  (task) => OrderingTerm.desc(task.createdAt),
+                  (task) => OrderingTerm.asc(task.id),
+                ]))
               .get();
 
       final selectedTasks = allTasks
@@ -196,21 +193,17 @@ class TaskRepository {
       final reorderedTasks = List<Task>.of(allTasks);
       final selectedPositions = <int>[];
 
-      // Запоминаем позиции задач выбранного фильтра.
       for (var index = 0; index < reorderedTasks.length; index++) {
         if (_matchesFilter(reorderedTasks[index], filter)) {
           selectedPositions.add(index);
         }
       }
 
-      // Меняем местами только выбранные задачи, сохраняя
-      // относительный порядок элементов других фильтров.
       for (var index = 0; index < selectedPositions.length; index++) {
         reorderedTasks[selectedPositions[index]] =
             tasksById[orderedTaskIds[index]]!;
       }
 
-      // Перезаписываем порядок всех задач в одной транзакции.
       for (var index = 0; index < reorderedTasks.length; index++) {
         final task = reorderedTasks[index];
 
@@ -237,11 +230,49 @@ class TaskRepository {
     await _syncRemindersSafely();
   }
 
-  Future<void> deleteTask(int taskId) async {
-    await (_database.delete(
-      _database.tasks,
-    )..where((task) => task.id.equals(taskId))).go();
+  Future<void> moveTaskToTrash(int taskId, {DateTime? deletedAt}) async {
+    final updatedRows =
+        await (_database.update(_database.tasks)..where(
+              (task) => task.id.equals(taskId) & task.deletedAt.isNull(),
+            ))
+            .write(
+              TasksCompanion(deletedAt: Value(deletedAt ?? DateTime.now())),
+            );
+    if (updatedRows == 0) {
+      throw StateError('Задача с ID $taskId не найдена.');
+    }
 
+    await _syncRemindersSafely();
+  }
+
+  Future<List<Task>> getDeletedTasks() {
+    return (_database.select(_database.tasks)
+          ..where((task) => task.deletedAt.isNotNull())
+          ..orderBy([
+            (task) => OrderingTerm.desc(task.deletedAt),
+            (task) => OrderingTerm.asc(task.sortOrder),
+            (task) => OrderingTerm.asc(task.id),
+          ]))
+        .get();
+  }
+
+  Future<void> restoreTask(int taskId) async {
+    final updatedRows =
+        await (_database.update(_database.tasks)..where(
+              (task) => task.id.equals(taskId) & task.deletedAt.isNotNull(),
+            ))
+            .write(const TasksCompanion(deletedAt: Value(null)));
+    if (updatedRows == 0) {
+      throw StateError('Задача с ID $taskId не найдена в корзине.');
+    }
+    await _syncRemindersSafely();
+  }
+
+  Future<void> permanentlyDeleteTask(int taskId) async {
+    await (_database.delete(
+          _database.tasks,
+        )..where((task) => task.id.equals(taskId) & task.deletedAt.isNotNull()))
+        .go();
     await _syncRemindersSafely();
   }
 }

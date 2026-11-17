@@ -1,4 +1,4 @@
-// lib/core/notifications/notification_service.dart
+import 'dart:ui' show Locale, PlatformDispatcher;
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -6,6 +6,7 @@ import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../database/app_database.dart';
+import '../../l10n/app_localizations.dart';
 
 class LocalNotificationService {
   LocalNotificationService._();
@@ -22,6 +23,7 @@ class LocalNotificationService {
 
   static const int habitsReminderId = 42;
   static const int taskReminderIdBase = 100000;
+  static const int focusTimerReminderId = 50000;
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -56,17 +58,35 @@ class LocalNotificationService {
 
     final granted = await androidPlugin?.requestNotificationsPermission();
 
-    // На Android до версии 13 отдельное разрешение не требуется.
     return granted ?? true;
   }
 
   Future<void> syncAll(AppDatabase database) async {
-    // Автоматические тесты и приложение без инициализированного
-    // плагина не должны обращаться к нативному Android API.
     if (!_initialized) return;
 
     await _syncHabitReminder(database);
     await _syncTaskReminders(database);
+  }
+
+  Future<bool> scheduleFocusCompletion(DateTime deadline) async {
+    await initialize();
+    final granted = await requestNotificationPermission();
+    if (!granted) return false;
+    final l10n = await _appLocalizations();
+    await _plugin.zonedSchedule(
+      id: focusTimerReminderId,
+      title: l10n.notificationFocusTitle,
+      body: l10n.notificationFocusBody,
+      scheduledDate: tz.TZDateTime.from(deadline, tz.local),
+      notificationDetails: _notificationDetails(l10n),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+    return true;
+  }
+
+  Future<void> cancelFocusCompletion() async {
+    await initialize();
+    await _plugin.cancel(id: focusTimerReminderId);
   }
 
   Future<void> _syncHabitReminder(AppDatabase database) async {
@@ -76,11 +96,14 @@ class LocalNotificationService {
 
     if (!enabled) return;
 
-    final activeHabits = await (database.select(
-      database.habits,
-    )..where((habit) => habit.isArchived.equals(false))).get();
+    final activeHabits =
+        await (database.select(database.habits)
+              ..where((habit) => habit.isArchived.equals(false))
+              ..where((habit) => habit.deletedAt.isNull()))
+            .get();
 
     if (activeHabits.isEmpty) return;
+    final l10n = await _appLocalizations();
 
     final hour = await _readTimePart(
       database,
@@ -113,18 +136,16 @@ class LocalNotificationService {
 
     await _plugin.zonedSchedule(
       id: habitsReminderId,
-      title: 'Пора проверить привычки',
-      body: 'Отметь привычки, запланированные на сегодня.',
+      title: l10n.notificationHabitsTitle,
+      body: l10n.notificationHabitsBody,
       scheduledDate: firstReminder,
-      notificationDetails: _notificationDetails,
+      notificationDetails: _notificationDetails(l10n),
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
     );
   }
 
   Future<void> _syncTaskReminders(AppDatabase database) async {
-    // Удаляем старую очередь напоминаний о задачах, чтобы после
-    // изменения задачи не оставались устаревшие уведомления.
     final pending = await _plugin.pendingNotificationRequests();
 
     for (final request in pending) {
@@ -157,9 +178,15 @@ class LocalNotificationService {
 
     final tasksWithDeadlines =
         tasks
-            .where((task) => !task.isCompleted && task.dueDate != null)
+            .where(
+              (task) =>
+                  task.deletedAt == null &&
+                  !task.isCompleted &&
+                  task.dueDate != null,
+            )
             .toList()
           ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+    final l10n = await _appLocalizations();
 
     for (final task in tasksWithDeadlines) {
       final dueDate = task.dueDate!;
@@ -174,30 +201,28 @@ class LocalNotificationService {
         minute,
       );
 
-      // Второй ID для напоминания накануне срока.
       final dayBeforeId = taskReminderIdBase + task.id * 2 + 1;
 
       if (dayBeforeReminder.isAfter(now)) {
         await _plugin.zonedSchedule(
           id: dayBeforeId,
-          title: 'Завтра срок выполнения',
+          title: l10n.notificationTaskTomorrow,
           body: task.title,
           scheduledDate: dayBeforeReminder,
-          notificationDetails: _notificationDetails,
+          notificationDetails: _notificationDetails(l10n),
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
       }
 
-      // Первый ID — уведомление непосредственно в день срока.
       final dueReminderId = taskReminderIdBase + task.id * 2;
 
       if (dueReminder.isAfter(now)) {
         await _plugin.zonedSchedule(
           id: dueReminderId,
-          title: 'Срок выполнения сегодня',
+          title: l10n.notificationTaskToday,
           body: task.title,
           scheduledDate: dueReminder,
-          notificationDetails: _notificationDetails,
+          notificationDetails: _notificationDetails(l10n),
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
       }
@@ -231,13 +256,21 @@ class LocalNotificationService {
     );
   }
 
-  static const NotificationDetails _notificationDetails = NotificationDetails(
-    android: AndroidNotificationDetails(
-      'productivity_reminders',
-      'Напоминания',
-      channelDescription: 'Напоминания о привычках и сроках задач',
-      importance: Importance.high,
-      priority: Priority.high,
-    ),
-  );
+  Future<AppLocalizations> _appLocalizations() {
+    final languageCode = PlatformDispatcher.instance.locale.languageCode;
+    return AppLocalizations.delegate.load(
+      Locale(languageCode == 'en' ? 'en' : 'ru'),
+    );
+  }
+
+  NotificationDetails _notificationDetails(AppLocalizations l10n) =>
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          'productivity_reminders',
+          l10n.remindersTitle,
+          channelDescription: l10n.notificationChannelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
 }

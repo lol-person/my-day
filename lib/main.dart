@@ -1,18 +1,23 @@
-// lib/main.dart
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'l10n/app_localizations.dart';
 import 'core/database/app_database.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/today_widget_service.dart';
 import 'features/backup/presentation/backup_page.dart';
 import 'features/calendar/presentation/calendar_page.dart';
 import 'features/clock/presentation/clock_page.dart';
+import 'features/focus/presentation/focus_page.dart';
 import 'features/habits/presentation/habits_page.dart';
 import 'features/reminders/presentation/reminders_page.dart';
 import 'features/settings/presentation/settings_page.dart';
 import 'features/statistics/presentation/statistics_page.dart';
+import 'features/trash/presentation/trash_page.dart';
 import 'features/tasks/presentation/tasks_page.dart';
+import 'l10n/l10n.dart';
 
 ThemeMode _parseThemeMode(String? value) {
   switch (value) {
@@ -25,45 +30,23 @@ ThemeMode _parseThemeMode(String? value) {
   }
 }
 
-Future<void> main() async {
+Locale? _parseAppLocale(String? value) {
+  switch (value) {
+    case 'ru':
+      return const Locale('ru');
+    case 'en':
+      return const Locale('en');
+    default:
+      return null;
+  }
+}
+
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   final database = AppDatabase();
 
-  var initialThemeMode = ThemeMode.system;
-  var initialAccentColor = AppAccentColor.defaultKey;
-
-  try {
-    final savedTheme = await database.getSetting(SettingsPage.themeModeKey);
-    initialThemeMode = _parseThemeMode(savedTheme);
-  } catch (error) {
-    debugPrint('Не удалось загрузить тему: $error');
-  }
-
-  try {
-    final savedAccentColor = await database.getSetting(
-      AppAccentColor.settingKey,
-    );
-    initialAccentColor = AppAccentColor.normalize(savedAccentColor);
-  } catch (error) {
-    debugPrint('Не удалось загрузить цвет интерфейса: $error');
-  }
-
-  try {
-    await LocalNotificationService.instance.initialize();
-    await LocalNotificationService.instance.syncAll(database);
-  } catch (error, stackTrace) {
-    debugPrint('Не удалось инициализировать уведомления: $error');
-    debugPrintStack(stackTrace: stackTrace);
-  }
-
-  runApp(
-    ProductivityApp(
-      database: database,
-      initialThemeMode: initialThemeMode,
-      initialAccentColor: initialAccentColor,
-    ),
-  );
+  runApp(ProductivityApp(database: database));
 }
 
 class ProductivityApp extends StatefulWidget {
@@ -72,19 +55,25 @@ class ProductivityApp extends StatefulWidget {
     required this.database,
     this.initialThemeMode = ThemeMode.system,
     this.initialAccentColor = AppAccentColor.defaultKey,
+    this.initialLocale,
+    this.initialWidgetTarget,
   });
 
   final AppDatabase database;
   final ThemeMode initialThemeMode;
   final String initialAccentColor;
+  final Locale? initialLocale;
+  final String? initialWidgetTarget;
 
   @override
   State<ProductivityApp> createState() => _ProductivityAppState();
 }
 
 class _ProductivityAppState extends State<ProductivityApp> {
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late ThemeMode _themeMode;
   late String _accentColorName;
+  Locale? _locale;
 
   @override
   void initState() {
@@ -92,6 +81,79 @@ class _ProductivityAppState extends State<ProductivityApp> {
 
     _themeMode = widget.initialThemeMode;
     _accentColorName = AppAccentColor.normalize(widget.initialAccentColor);
+    _locale = widget.initialLocale;
+
+    TodayWidgetService.setTargetHandler(_openWidgetTarget);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_loadInitialSettings());
+      unawaited(_initializeBackgroundServices());
+      unawaited(_openInitialWidgetTarget());
+    });
+  }
+
+  Future<void> _loadInitialSettings() async {
+    try {
+      final values = await Future.wait<String?>([
+        widget.database.getSetting(SettingsPage.themeModeKey),
+        widget.database.getSetting(AppAccentColor.settingKey),
+        widget.database.getSetting(SettingsPage.languageKey),
+      ]);
+
+      if (!mounted) return;
+
+      setState(() {
+        _themeMode = _parseThemeMode(values[0]);
+        _accentColorName = AppAccentColor.normalize(values[1]);
+        _locale = _parseAppLocale(values[2]);
+      });
+    } catch (error, stackTrace) {
+      debugPrint('Не удалось загрузить настройки: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _initializeBackgroundServices() async {
+    try {
+      await LocalNotificationService.instance.initialize();
+      await LocalNotificationService.instance.syncAll(widget.database);
+    } catch (error, stackTrace) {
+      debugPrint('Не удалось инициализировать уведомления: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    try {
+      await TodayWidgetService.update(widget.database);
+    } catch (error, stackTrace) {
+      debugPrint('Не удалось обновить виджет: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _openInitialWidgetTarget() async {
+    try {
+      final target = await TodayWidgetService.getInitialTarget();
+
+      if (!mounted || target == null) return;
+
+      _openWidgetTarget(target);
+    } catch (error) {
+      debugPrint('Не удалось получить маршрут виджета: $error');
+    }
+  }
+
+  void _openWidgetTarget(String target) {
+    final context = _navigatorKey.currentContext;
+    if (context == null) return;
+    final Widget? page = switch (target) {
+      'habits' => HabitsPage(database: widget.database),
+      'tasks' => TasksPage(database: widget.database),
+      'statistics' => StatisticsPage(database: widget.database),
+      _ => null,
+    };
+    if (page == null) return;
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (context) => page));
   }
 
   void _changeThemeMode(ThemeMode mode) {
@@ -112,42 +174,39 @@ class _ProductivityAppState extends State<ProductivityApp> {
     });
   }
 
+  void _changeLocale(Locale? locale) {
+    if (_locale?.languageCode == locale?.languageCode) return;
+
+    setState(() {
+      _locale = locale;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final seedColor = AppAccentColor.colorFor(_accentColorName);
-
     return MaterialApp(
-      title: 'Мой день',
+      navigatorKey: _navigatorKey,
+      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       debugShowCheckedModeBanner: false,
+      locale: _locale,
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      localeResolutionCallback: (locale, supportedLocales) {
+        if (locale?.languageCode == 'en') return const Locale('en');
+        if (locale?.languageCode == 'ru') return const Locale('ru');
+        return const Locale('ru');
+      },
       themeMode: _themeMode,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seedColor,
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF7F5FA),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFF7F5FA),
-          foregroundColor: Color(0xFF211F26),
-          elevation: 0,
-          scrolledUnderElevation: 0,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seedColor,
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF121116),
-      ),
+      theme: AppTheme.light(_accentColorName),
+      darkTheme: AppTheme.dark(_accentColorName),
       home: DashboardPage(
         database: widget.database,
         themeMode: _themeMode,
         onThemeModeChanged: _changeThemeMode,
         accentColorName: _accentColorName,
         onAccentColorChanged: _changeAccentColor,
+        locale: _locale,
+        onLocaleChanged: _changeLocale,
       ),
     );
   }
@@ -161,6 +220,8 @@ class DashboardPage extends StatefulWidget {
     required this.onThemeModeChanged,
     this.accentColorName = AppAccentColor.defaultKey,
     this.onAccentColorChanged,
+    this.locale,
+    this.onLocaleChanged,
   });
 
   final AppDatabase database;
@@ -168,6 +229,8 @@ class DashboardPage extends StatefulWidget {
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final String accentColorName;
   final ValueChanged<String>? onAccentColorChanged;
+  final Locale? locale;
+  final ValueChanged<Locale?>? onLocaleChanged;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -175,44 +238,26 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   String _getGreeting(int hour) {
-    if (hour < 12) return 'Доброе утро!';
-    if (hour < 18) return 'Добрый день!';
-    return 'Добрый вечер!';
+    if (hour < 12) return context.l10n.homeMorning;
+    if (hour < 18) return context.l10n.homeAfternoon;
+    return context.l10n.homeEvening;
   }
 
   String _formatDate(DateTime date) {
-    const weekdays = [
-      'понедельник',
-      'вторник',
-      'среда',
-      'четверг',
-      'пятница',
-      'суббота',
-      'воскресенье',
-    ];
-
-    const months = [
-      'января',
-      'февраля',
-      'марта',
-      'апреля',
-      'мая',
-      'июня',
-      'июля',
-      'августа',
-      'сентября',
-      'октября',
-      'ноября',
-      'декабря',
-    ];
-
-    return '${weekdays[date.weekday - 1]}, '
-        '${date.day} ${months[date.month - 1]}';
+    return MaterialLocalizations.of(context).formatFullDate(date);
   }
 
   void _openClock() {
     Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (context) => const ClockPage()));
+  }
+
+  void _openFocus() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => FocusPage(database: widget.database),
+      ),
+    );
   }
 
   void _openHabits() {
@@ -235,6 +280,14 @@ class _DashboardPageState extends State<DashboardPage> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => StatisticsPage(database: widget.database),
+      ),
+    );
+  }
+
+  void _openTrash() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => TrashPage(database: widget.database),
       ),
     );
   }
@@ -272,6 +325,8 @@ class _DashboardPageState extends State<DashboardPage> {
           onThemeModeChanged: widget.onThemeModeChanged,
           accentColorName: widget.accentColorName,
           onAccentColorChanged: widget.onAccentColorChanged,
+          locale: widget.locale,
+          onLocaleChanged: widget.onLocaleChanged,
         ),
       ),
     );
@@ -324,13 +379,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Мой день',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
+        title: Text(context.l10n.appTitle),
         actions: [
           IconButton(
-            tooltip: 'Настройки',
+            tooltip: context.l10n.settings,
             onPressed: _openSettings,
             icon: const Icon(Icons.settings_rounded),
           ),
@@ -347,17 +399,14 @@ class _DashboardPageState extends State<DashboardPage> {
                   _getGreeting(now.hour),
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: colors.primary,
-                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Маленькие шаги.\nБольшие результаты.',
+                  context.l10n.homeHeadline,
                   style: theme.textTheme.headlineMedium?.copyWith(
                     color: colors.onSurface,
-                    fontWeight: FontWeight.w800,
                     height: 1.15,
-                    letterSpacing: -0.5,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -381,14 +430,8 @@ class _DashboardPageState extends State<DashboardPage> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: AppAccentColor.heroGradient(
-                        widget.accentColorName,
-                      ),
-                    ),
-                    borderRadius: BorderRadius.circular(28),
+                    color: colors.primaryContainer,
+                    borderRadius: BorderRadius.circular(24),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -397,33 +440,30 @@ class _DashboardPageState extends State<DashboardPage> {
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.16),
+                          color: colors.onPrimaryContainer.withValues(
+                            alpha: 0.08,
+                          ),
                           borderRadius: BorderRadius.circular(16),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.auto_awesome_rounded,
-                          color: Colors.white,
+                          color: colors.onPrimaryContainer,
                           size: 26,
                         ),
                       ),
                       const SizedBox(height: 22),
-                      const Text(
-                        'Твой день —\nв твоих руках',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 27,
-                          fontWeight: FontWeight.w800,
+                      Text(
+                        context.l10n.welcomeHeadline,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          color: colors.onPrimaryContainer,
                           height: 1.2,
-                          letterSpacing: -0.4,
                         ),
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Выбирай главное, двигайся небольшими '
-                        'шагами и постепенно создавай полезные привычки.',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.88),
-                          fontSize: 15,
+                        context.l10n.homeMessage,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: colors.onPrimaryContainer,
                           height: 1.5,
                         ),
                       ),
@@ -434,102 +474,59 @@ class _DashboardPageState extends State<DashboardPage> {
                 _actionButton(
                   onPressed: _openClock,
                   icon: Icons.access_time_rounded,
-                  label: 'Открыть часы Flip Clock',
+                  label: context.l10n.openClock,
                   primary: true,
+                ),
+                const SizedBox(height: 12),
+                _actionButton(
+                  onPressed: _openFocus,
+                  icon: Icons.timer_outlined,
+                  label: context.l10n.openFocus,
                 ),
                 const SizedBox(height: 12),
                 _actionButton(
                   onPressed: _openCalendar,
                   icon: Icons.calendar_month_rounded,
-                  label: 'Открыть календарь и план дня',
+                  label: context.l10n.openCalendar,
                 ),
                 const SizedBox(height: 12),
                 _actionButton(
                   onPressed: _openHabits,
                   icon: Icons.repeat_rounded,
-                  label: 'Открыть трекер привычек',
+                  label: context.l10n.openHabitTracker,
                 ),
                 const SizedBox(height: 12),
                 _actionButton(
                   onPressed: _openTasks,
                   icon: Icons.checklist_rounded,
-                  label: 'Открыть задачник',
+                  label: context.l10n.openTaskList,
                 ),
                 const SizedBox(height: 12),
                 _actionButton(
                   onPressed: _openStatistics,
                   icon: Icons.bar_chart_rounded,
-                  label: 'Посмотреть статистику',
+                  label: context.l10n.openStatistics,
                   outlined: true,
                 ),
                 const SizedBox(height: 12),
                 _actionButton(
                   onPressed: _openReminders,
                   icon: Icons.notifications_active_outlined,
-                  label: 'Настроить напоминания',
+                  label: context.l10n.openReminders,
                   outlined: true,
                 ),
                 const SizedBox(height: 12),
                 _actionButton(
                   onPressed: _openBackup,
                   icon: Icons.backup_rounded,
-                  label: 'Экспорт и импорт данных',
+                  label: context.l10n.openBackup,
                 ),
-                const SizedBox(height: 30),
-                Text(
-                  'Рабочее пространство',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 28,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.surface,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: colors.outlineVariant),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: colors.primaryContainer,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.check_circle_outline_rounded,
-                          size: 32,
-                          color: colors.onPrimaryContainer,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'Здесь всё начнётся',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Привычки, задачи, календарь, статистика, '
-                        'напоминания и резервные копии уже доступны.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colors.onSurfaceVariant,
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
+                const SizedBox(height: 12),
+                _actionButton(
+                  onPressed: _openTrash,
+                  icon: Icons.delete_outline_rounded,
+                  label: context.l10n.trash,
+                  outlined: true,
                 ),
               ],
             ),

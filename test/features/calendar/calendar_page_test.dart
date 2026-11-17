@@ -1,5 +1,3 @@
-// test/features/calendar/calendar_page_test.dart
-
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:productivity_app/core/database/app_database.dart';
 import 'package:productivity_app/features/calendar/presentation/calendar_page.dart';
+import 'package:productivity_app/l10n/app_localizations.dart';
 
 void main() {
   late AppDatabase database;
@@ -72,7 +71,12 @@ void main() {
         );
 
     await tester.pumpWidget(
-      MaterialApp(home: CalendarPage(database: database)),
+      MaterialApp(
+        locale: const Locale('ru'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: CalendarPage(database: database),
+      ),
     );
 
     await tester.pumpAndSettle();
@@ -81,7 +85,6 @@ void main() {
     expect(find.text('Привычка сегодня'), findsOneWidget);
     expect(find.text('Привычка не на сегодня'), findsNothing);
 
-    // Отмечаем привычку, пока её элемент находится на экране.
     final habitTile = find.widgetWithText(CheckboxListTile, 'Привычка сегодня');
 
     await tester.tap(habitTile);
@@ -100,7 +103,6 @@ void main() {
 
     expect(entry != null, isTrue);
 
-    // Прокручиваем список к задачам, прежде чем их искать.
     await tester.scrollUntilVisible(
       find.text('Задача на сегодня'),
       250,

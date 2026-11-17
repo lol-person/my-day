@@ -1,8 +1,7 @@
-// lib/features/calendar/presentation/calendar_page.dart
-
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../l10n/l10n.dart';
 import '../../habits/data/habit_repository.dart';
 import '../../habits/presentation/habits_page.dart';
 import '../../tasks/data/task_repository.dart';
@@ -76,9 +75,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
     try {
       await request;
-    } catch (_) {
-      // Ошибку покажет FutureBuilder.
-    }
+    } catch (_) {}
   }
 
   void _selectDate(DateTime date) {
@@ -100,9 +97,9 @@ class _CalendarPageState extends State<CalendarPage> {
       initialDate: _selectedDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      helpText: 'Выбери дату',
-      cancelText: 'Отмена',
-      confirmText: 'Выбрать',
+      helpText: context.l10n.calendarPickHelp,
+      cancelText: context.l10n.cancel,
+      confirmText: context.l10n.choose,
     );
 
     if (!mounted || selected == null) return;
@@ -131,7 +128,7 @@ class _CalendarPageState extends State<CalendarPage> {
       await _reload();
     } catch (error) {
       if (mounted) {
-        _showMessage('Не удалось обновить привычку: $error');
+        _showMessage(context.l10n.habitUpdateFailed);
       }
     } finally {
       if (mounted) {
@@ -155,7 +152,7 @@ class _CalendarPageState extends State<CalendarPage> {
       await _reload();
     } catch (error) {
       if (mounted) {
-        _showMessage('Не удалось обновить задачу: $error');
+        _showMessage(context.l10n.taskUpdatedFailed);
       }
     } finally {
       if (mounted) {
@@ -197,59 +194,16 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   String _formatLongDate(DateTime date) {
-    const weekdays = [
-      'понедельник',
-      'вторник',
-      'среда',
-      'четверг',
-      'пятница',
-      'суббота',
-      'воскресенье',
-    ];
-
-    const months = [
-      'января',
-      'февраля',
-      'марта',
-      'апреля',
-      'мая',
-      'июня',
-      'июля',
-      'августа',
-      'сентября',
-      'октября',
-      'ноября',
-      'декабря',
-    ];
-
-    return '${weekdays[date.weekday - 1]}, '
-        '${date.day} ${months[date.month - 1]}';
+    return MaterialLocalizations.of(context).formatFullDate(date);
   }
 
   String _formatWeekRange(DateTime start) {
-    const months = [
-      'янв.',
-      'фев.',
-      'мар.',
-      'апр.',
-      'мая',
-      'июн.',
-      'июл.',
-      'авг.',
-      'сен.',
-      'окт.',
-      'ноя.',
-      'дек.',
-    ];
-
     final end = start.add(const Duration(days: 6));
-
-    if (start.month == end.month && start.year == end.year) {
-      return '${start.day}–${end.day} ${months[end.month - 1]} ${end.year}';
-    }
-
-    return '${start.day} ${months[start.month - 1]} – '
-        '${end.day} ${months[end.month - 1]} ${end.year}';
+    final localizations = MaterialLocalizations.of(context);
+    return context.l10n.calendarWeekRange(
+      localizations.formatMediumDate(start),
+      localizations.formatMediumDate(end),
+    );
   }
 
   @override
@@ -259,18 +213,18 @@ class _CalendarPageState extends State<CalendarPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Календарь',
+        title: Text(
+          context.l10n.calendar,
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
           IconButton(
-            tooltip: 'Выбрать дату',
+            tooltip: context.l10n.selectDate,
             onPressed: _isUpdating ? null : _chooseDate,
             icon: const Icon(Icons.calendar_month_rounded),
           ),
           IconButton(
-            tooltip: 'Сегодня',
+            tooltip: context.l10n.calendarToday,
             onPressed: _isUpdating ? null : () => _selectDate(DateTime.now()),
             icon: const Icon(Icons.today_rounded),
           ),
@@ -299,13 +253,13 @@ class _CalendarPageState extends State<CalendarPage> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Не удалось загрузить план дня',
+                        context.l10n.calendarPlan,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.titleMedium,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '${snapshot.error}',
+                        context.l10n.calendarLoadFailed,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodySmall,
                       ),
@@ -313,7 +267,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       FilledButton.icon(
                         onPressed: _reload,
                         icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('Повторить'),
+                        label: Text(context.l10n.retry),
                       ),
                     ],
                   ),
@@ -330,7 +284,7 @@ class _CalendarPageState extends State<CalendarPage> {
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                 children: [
                   Text(
-                    'План дня',
+                    context.l10n.calendarPlan,
                     style: theme.textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.5,
@@ -353,7 +307,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   const SizedBox(height: 28),
                   _buildSectionHeader(
                     context,
-                    title: 'Привычки',
+                    title: context.l10n.dailyPlanHabits,
                     icon: Icons.repeat_rounded,
                     count: '${data.completedHabits}/${data.habits.length}',
                   ),
@@ -362,7 +316,7 @@ class _CalendarPageState extends State<CalendarPage> {
                   const SizedBox(height: 28),
                   _buildSectionHeader(
                     context,
-                    title: 'Задачи со сроком на этот день',
+                    title: context.l10n.dailyPlanTasks,
                     icon: Icons.checklist_rounded,
                     count: '${data.completedTasks}/${data.tasks.length}',
                   ),
@@ -384,7 +338,7 @@ class _CalendarPageState extends State<CalendarPage> {
     return Row(
       children: [
         IconButton(
-          tooltip: 'Предыдущая неделя',
+          tooltip: context.l10n.previousWeek,
           onPressed: _isUpdating ? null : () => _changeWeek(-1),
           icon: const Icon(Icons.chevron_left_rounded),
         ),
@@ -398,7 +352,7 @@ class _CalendarPageState extends State<CalendarPage> {
           ),
         ),
         IconButton(
-          tooltip: 'Следующая неделя',
+          tooltip: context.l10n.nextWeek,
           onPressed: _isUpdating ? null : () => _changeWeek(1),
           icon: const Icon(Icons.chevron_right_rounded),
         ),
@@ -410,7 +364,15 @@ class _CalendarPageState extends State<CalendarPage> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
-    const weekdayLabels = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
+    final weekdayLabels = [
+      context.l10n.weekdayShortMon,
+      context.l10n.weekdayShortTue,
+      context.l10n.weekdayShortWed,
+      context.l10n.weekdayShortThu,
+      context.l10n.weekdayShortFri,
+      context.l10n.weekdayShortSat,
+      context.l10n.weekdayShortSun,
+    ];
 
     final start = _weekStart(_selectedDate);
     final today = DateUtils.dateOnly(DateTime.now());
@@ -489,18 +451,18 @@ class _CalendarPageState extends State<CalendarPage> {
             SizedBox(
               width: cardWidth,
               child: _SummaryCard(
-                title: 'Привычки',
+                title: context.l10n.dailyPlanHabits,
                 value: '${data.completedHabits}/${data.habits.length}',
-                subtitle: 'Выполнено',
+                subtitle: context.l10n.done,
                 icon: Icons.repeat_rounded,
               ),
             ),
             SizedBox(
               width: cardWidth,
               child: _SummaryCard(
-                title: 'Задачи',
+                title: context.l10n.dailyPlanTasks,
                 value: '${data.completedTasks}/${data.tasks.length}',
-                subtitle: 'Выполнено',
+                subtitle: context.l10n.done,
                 icon: Icons.task_alt_rounded,
               ),
             ),
@@ -550,9 +512,9 @@ class _CalendarPageState extends State<CalendarPage> {
     if (data.habits.isEmpty) {
       return _EmptyPlanCard(
         icon: Icons.repeat_rounded,
-        title: 'Нет запланированных привычек',
-        description: 'На выбранный день активные привычки не назначены.',
-        buttonLabel: 'Открыть привычки',
+        title: context.l10n.noHabitsScheduled,
+        description: context.l10n.noHabitsScheduledDescription,
+        buttonLabel: context.l10n.openHabits,
         onPressed: _openHabits,
       );
     }
@@ -606,9 +568,9 @@ class _CalendarPageState extends State<CalendarPage> {
     if (data.tasks.isEmpty) {
       return _EmptyPlanCard(
         icon: Icons.checklist_rounded,
-        title: 'На этот день нет задач',
-        description: 'Здесь появятся задачи, у которых срок выполнения приходится на выбранную дату.',
-        buttonLabel: 'Открыть задачник',
+        title: context.l10n.noTasksForDate,
+        description: context.l10n.noTasksForDateDescription,
+        buttonLabel: context.l10n.openTaskList,
         onPressed: _openTasks,
       );
     }
@@ -658,10 +620,10 @@ class _CalendarPageState extends State<CalendarPage> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
-    const priorityNames = [
-      'Низкий приоритет',
-      'Обычный приоритет',
-      'Высокий приоритет',
+    final priorityNames = [
+      context.l10n.lowPriorityLong,
+      context.l10n.normalPriorityLong,
+      context.l10n.highPriorityLong,
     ];
 
     final details = <String>[];

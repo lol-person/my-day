@@ -1,10 +1,10 @@
-// lib/features/clock/presentation/clock_page.dart
-
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import '../../../l10n/l10n.dart';
 
 class ClockPage extends StatefulWidget {
   const ClockPage({super.key});
@@ -23,10 +23,10 @@ class _ClockPageState extends State<ClockPage> {
   static const Color _digitalBackground = Color(0xFF0C1510);
   static const Color _digitalForeground = Color(0xFF69F0AE);
 
-  static const List<String> _styleNames = [
-    'Flip Clock',
-    'Минимализм',
-    'Digital',
+  List<String> get _styleNames => [
+    context.l10n.clockFlipStyle,
+    context.l10n.clockThemeMinimal,
+    context.l10n.clockDigitalStyle,
   ];
 
   @override
@@ -61,8 +61,6 @@ class _ClockPageState extends State<ClockPage> {
   void dispose() {
     _timer?.cancel();
 
-    // При выходе из часов возвращаем обычную ориентацию приложения
-    // и системные панели Android.
     unawaited(SystemChrome.setPreferredOrientations(DeviceOrientation.values));
 
     unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
@@ -72,35 +70,8 @@ class _ClockPageState extends State<ClockPage> {
 
   String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
-  String get _formattedDate {
-    const weekdays = [
-      'понедельник',
-      'вторник',
-      'среда',
-      'четверг',
-      'пятница',
-      'суббота',
-      'воскресенье',
-    ];
-
-    const months = [
-      'января',
-      'февраля',
-      'марта',
-      'апреля',
-      'мая',
-      'июня',
-      'июля',
-      'августа',
-      'сентября',
-      'октября',
-      'ноября',
-      'декабря',
-    ];
-
-    return '${weekdays[_now.weekday - 1]}, '
-        '${_now.day} ${months[_now.month - 1]}';
-  }
+  String _formattedDate(BuildContext context) =>
+      MaterialLocalizations.of(context).formatFullDate(_now);
 
   Widget _buildFlipDigit({
     required String digit,
@@ -126,7 +97,6 @@ class _ClockPageState extends State<ClockPage> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Верхняя и нижняя половины карточки.
           Positioned(
             top: 0,
             left: 0,
@@ -288,7 +258,7 @@ class _ClockPageState extends State<ClockPage> {
                       children: [
                         Expanded(
                           child: Text(
-                            _formattedDate,
+                            _formattedDate(context),
                             style: const TextStyle(
                               color: Color(0xFFB9BBC5),
                               fontSize: 13,
@@ -337,7 +307,7 @@ class _ClockPageState extends State<ClockPage> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'СЕЙЧАС',
+                      context.l10n.clockNow,
                       style: TextStyle(
                         color: colors.primary,
                         fontSize: 12,
@@ -366,7 +336,7 @@ class _ClockPageState extends State<ClockPage> {
                             ),
                             const SizedBox(height: 18),
                             Text(
-                              _formattedDate,
+                              _formattedDate(context),
                               style: TextStyle(
                                 color: colors.onSurfaceVariant,
                                 fontSize: 17,
@@ -380,7 +350,7 @@ class _ClockPageState extends State<ClockPage> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      'СЕКУНДЫ  ${_twoDigits(_now.second)}',
+                      context.l10n.clockSeconds(_twoDigits(_now.second)),
                       style: TextStyle(
                         color: colors.onSurfaceVariant,
                         fontSize: 13,
@@ -473,7 +443,7 @@ class _ClockPageState extends State<ClockPage> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: Text(
-                      _formattedDate,
+                      _formattedDate(context),
                       style: const TextStyle(
                         color: Color(0xFF9AB9A7),
                         fontSize: 14,

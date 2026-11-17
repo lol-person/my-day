@@ -1,9 +1,8 @@
-// lib/features/settings/presentation/settings_page.dart
-
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../l10n/l10n.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -13,15 +12,20 @@ class SettingsPage extends StatefulWidget {
     required this.onThemeModeChanged,
     this.accentColorName = AppAccentColor.defaultKey,
     this.onAccentColorChanged,
+    this.locale,
+    this.onLocaleChanged,
   });
 
   static const String themeModeKey = 'appearance.themeMode';
+  static const String languageKey = 'appearance.language';
 
   final AppDatabase database;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final String accentColorName;
   final ValueChanged<String>? onAccentColorChanged;
+  final Locale? locale;
+  final ValueChanged<Locale?>? onLocaleChanged;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -30,6 +34,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late ThemeMode _selectedMode;
   late String _selectedAccentColor;
+  late Locale? _selectedLocale;
 
   bool _isSaving = false;
 
@@ -39,6 +44,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     _selectedMode = widget.themeMode;
     _selectedAccentColor = AppAccentColor.normalize(widget.accentColorName);
+    _selectedLocale = widget.locale;
   }
 
   @override
@@ -51,6 +57,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (oldWidget.accentColorName != widget.accentColorName) {
       _selectedAccentColor = AppAccentColor.normalize(widget.accentColorName);
+    }
+    if (oldWidget.locale?.languageCode != widget.locale?.languageCode) {
+      _selectedLocale = widget.locale;
     }
   }
 
@@ -85,10 +94,10 @@ class _SettingsPageState extends State<SettingsPage> {
       });
 
       widget.onThemeModeChanged(mode);
-      _showMessage('Настройки сохранены');
+      _showMessage(context.l10n.settingsSaved);
     } catch (error) {
       if (mounted) {
-        _showMessage('Не удалось сохранить настройки: $error');
+        _showMessage(context.l10n.settingsSaveFailed);
       }
     } finally {
       if (mounted) {
@@ -116,10 +125,46 @@ class _SettingsPageState extends State<SettingsPage> {
       });
 
       widget.onAccentColorChanged?.call(colorName);
-      _showMessage('Цвет интерфейса сохранён');
+      _showMessage(context.l10n.accentSaved);
     } catch (error) {
       if (mounted) {
-        _showMessage('Не удалось сохранить цвет: $error');
+        _showMessage(context.l10n.accentSaveFailed);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveLocale(Locale? locale) async {
+    if (_isSaving || _selectedLocale?.languageCode == locale?.languageCode) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await widget.database.saveSetting(
+        SettingsPage.languageKey,
+        locale?.languageCode ?? 'system',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _selectedLocale = locale;
+      });
+
+      widget.onLocaleChanged?.call(locale);
+      _showMessage(context.l10n.settingsSaved);
+    } catch (error) {
+      if (mounted) {
+        _showMessage(context.l10n.settingsSaveFailed);
       }
     } finally {
       if (mounted) {
@@ -133,13 +178,22 @@ class _SettingsPageState extends State<SettingsPage> {
   String _themeDescription(ThemeMode mode) {
     switch (mode) {
       case ThemeMode.system:
-        return 'Приложение следует настройкам Android.';
+        return context.l10n.systemThemeDescription;
       case ThemeMode.light:
-        return 'Всегда используется светлое оформление.';
+        return context.l10n.lightThemeDescription;
       case ThemeMode.dark:
-        return 'Всегда используется тёмное оформление.';
+        return context.l10n.darkThemeDescription;
     }
   }
+
+  String _accentColorLabel(String colorName) => switch (colorName) {
+    'green' => context.l10n.colorGreen,
+    'red' => context.l10n.colorRed,
+    'blue' => context.l10n.colorBlue,
+    'orange' => context.l10n.colorOrange,
+    'teal' => context.l10n.colorTeal,
+    _ => context.l10n.colorPurple,
+  };
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -185,32 +239,38 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _languageChip({required String label, required Locale? locale}) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: _selectedLocale?.languageCode == locale?.languageCode,
+      onSelected: _isSaving
+          ? null
+          : (selected) {
+              if (selected) {
+                _saveLocale(locale);
+              }
+            },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Настройки',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
+      appBar: AppBar(title: Text(context.l10n.settings)),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
           children: [
             Text(
-              'Внешний вид',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+              context.l10n.settingsAppearance,
+              style: theme.textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
             Text(
-              'Выбери оформление, которое тебе удобно. '
-              'Изменение применяется сразу.',
+              context.l10n.appearanceDescription,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: colors.onSurfaceVariant,
                 height: 1.5,
@@ -225,10 +285,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Тема приложения',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      context.l10n.appTheme,
+                      style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 14),
                     Wrap(
@@ -236,17 +294,17 @@ class _SettingsPageState extends State<SettingsPage> {
                       runSpacing: 8,
                       children: [
                         _themeChip(
-                          label: 'Система',
+                          label: context.l10n.systemTheme,
                           icon: Icons.brightness_auto_rounded,
                           mode: ThemeMode.system,
                         ),
                         _themeChip(
-                          label: 'Светлая',
+                          label: context.l10n.lightTheme,
                           icon: Icons.light_mode_rounded,
                           mode: ThemeMode.light,
                         ),
                         _themeChip(
-                          label: 'Тёмная',
+                          label: context.l10n.darkTheme,
                           icon: Icons.dark_mode_rounded,
                           mode: ThemeMode.dark,
                         ),
@@ -273,15 +331,47 @@ class _SettingsPageState extends State<SettingsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Основной цвет',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      context.l10n.appLanguage,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _languageChip(
+                          label: context.l10n.systemLanguage,
+                          locale: null,
+                        ),
+                        _languageChip(
+                          label: context.l10n.russianLanguage,
+                          locale: const Locale('ru'),
+                        ),
+                        _languageChip(
+                          label: context.l10n.englishLanguage,
+                          locale: const Locale('en'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      context.l10n.accentColor,
+                      style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Меняет акцентный цвет кнопок, выделений '
-                      'и главного блока.',
+                      context.l10n.accentDescription,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: colors.onSurfaceVariant,
                         height: 1.4,
@@ -294,7 +384,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       children: AppAccentColor.colors.entries.map((entry) {
                         return _accentColorChip(
                           colorName: entry.key,
-                          label: AppAccentColor.names[entry.key]!,
+                          label: _accentColorLabel(entry.key),
                           color: entry.value,
                         );
                       }).toList(),
@@ -308,23 +398,14 @@ class _SettingsPageState extends State<SettingsPage> {
               const LinearProgressIndicator(),
             ],
             const SizedBox(height: 24),
-            Text(
-              'Хранение данных',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+            Text(context.l10n.dataStorage, style: theme.textTheme.titleLarge),
             const SizedBox(height: 12),
             Card(
               margin: EdgeInsets.zero,
               child: ListTile(
                 leading: Icon(Icons.storage_rounded, color: colors.primary),
-                title: const Text('Локальная база данных'),
-                subtitle: const Text(
-                  'Задачи, привычки и настройки хранятся на устройстве. '
-                  'Тема и выбранный цвет включаются в резервную копию '
-                  'через экспорт настроек.',
-                ),
+                title: Text(context.l10n.localDatabase),
+                subtitle: Text(context.l10n.localDatabaseDescription),
                 isThreeLine: true,
               ),
             ),

@@ -1,10 +1,25 @@
-// android/app/build.gradle.kts
+
+import java.util.Properties
 
 plugins {
     id("com.android.application")
-    // Flutter Gradle Plugin применяется после Android и Kotlin.
+
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+
+val releaseStoreFile = keystoreProperties.getProperty("storeFile")
+    ?.takeIf { it.isNotBlank() }
+    ?.let { rootProject.file(it) }
+val releaseSigningConfigured =
+    listOf("keyAlias", "keyPassword", "storePassword").all {
+        !keystoreProperties.getProperty(it).isNullOrBlank()
+    } && releaseStoreFile?.isFile == true
 
 android {
     namespace = "com.example.productivity_app"
@@ -26,9 +41,22 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = requireNotNull(releaseStoreFile)
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }

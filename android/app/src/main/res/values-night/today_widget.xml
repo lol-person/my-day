@@ -1,0 +1,8 @@
+<resources>
+    <color name="today_widget_surface">#1D1A20</color>
+    <color name="today_widget_surface_container">#2B2930</color>
+    <color name="today_widget_text_primary">#E6E0E9</color>
+    <color name="today_widget_text_secondary">#CAC4D0</color>
+    <color name="today_widget_accent">#D0BCFF</color>
+    <color name="today_widget_progress_track">#49454F</color>
+</resources>

@@ -1,9 +1,8 @@
-// lib/features/reminders/presentation/reminders_page.dart
-
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../l10n/l10n.dart';
 
 class RemindersPage extends StatefulWidget {
   const RemindersPage({super.key, required this.database});
@@ -94,7 +93,7 @@ class _RemindersPageState extends State<RemindersPage> {
       });
     } catch (error) {
       if (mounted) {
-        _showMessage('Не удалось загрузить настройки: $error');
+        _showMessage(context.l10n.reminderLoadFailed);
       }
     } finally {
       if (mounted) {
@@ -144,11 +143,11 @@ class _RemindersPageState extends State<RemindersPage> {
       await LocalNotificationService.instance.syncAll(database);
 
       if (mounted) {
-        _showMessage('Настройки сохранены');
+        _showMessage(context.l10n.settingsSaved);
       }
     } catch (error) {
       if (mounted) {
-        _showMessage('Ошибка сохранения настроек: $error');
+        _showMessage(context.l10n.reminderSaveFailed);
       }
     } finally {
       if (mounted) {
@@ -160,20 +159,19 @@ class _RemindersPageState extends State<RemindersPage> {
   }
 
   Future<bool> _ensurePermission() async {
+    final l10n = context.l10n;
     try {
       final granted = await LocalNotificationService.instance
           .requestNotificationPermission();
 
       if (!granted) {
-        _showMessage(
-          'Разреши уведомления для приложения в настройках Android.',
-        );
+        if (mounted) _showMessage(l10n.reminderPermissionSettings);
         return false;
       }
 
       return true;
-    } catch (error) {
-      _showMessage('Не удалось запросить разрешение: $error');
+    } catch (_) {
+      if (mounted) _showMessage(l10n.reminderPermissionFailed);
       return false;
     }
   }
@@ -208,7 +206,7 @@ class _RemindersPageState extends State<RemindersPage> {
     final selected = await showTimePicker(
       context: context,
       initialTime: _habitsTime,
-      helpText: 'Время напоминания о привычках',
+      helpText: context.l10n.habitReminderTime,
     );
 
     if (!mounted || selected == null) return;
@@ -226,7 +224,7 @@ class _RemindersPageState extends State<RemindersPage> {
     final selected = await showTimePicker(
       context: context,
       initialTime: _tasksTime,
-      helpText: 'Время напоминания о задачах',
+      helpText: context.l10n.taskReminderTime,
     );
 
     if (!mounted || selected == null) return;
@@ -263,8 +261,8 @@ class _RemindersPageState extends State<RemindersPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Напоминания',
+        title: Text(
+          context.l10n.remindersTitle,
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
@@ -275,15 +273,14 @@ class _RemindersPageState extends State<RemindersPage> {
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 children: [
                   Text(
-                    'Напоминания на устройстве',
+                    context.l10n.remindersOnDevice,
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Расписание и настройки хранятся локально. '
-                    'Подключение к интернету не требуется.',
+                    context.l10n.remindersOffline,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: colors.onSurfaceVariant,
                       height: 1.5,
@@ -300,17 +297,15 @@ class _RemindersPageState extends State<RemindersPage> {
                             value: _habitsEnabled,
                             onChanged: _isSaving ? null : _setHabitsEnabled,
                             secondary: const Icon(Icons.repeat_rounded),
-                            title: const Text('Напоминания о привычках'),
-                            subtitle: const Text(
-                              'Ежедневно проверить привычки',
-                            ),
+                            title: Text(context.l10n.habitsReminder),
+                            subtitle: Text(context.l10n.dailyHabitReminder),
                           ),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: _buildTimeButton(
-                                label: 'Время',
+                                label: context.l10n.time,
                                 time: _habitsTime,
                                 onPressed: _chooseHabitsTime,
                               ),
@@ -323,17 +318,15 @@ class _RemindersPageState extends State<RemindersPage> {
                             secondary: const Icon(
                               Icons.notifications_active_outlined,
                             ),
-                            title: const Text('Напоминания о задачах'),
-                            subtitle: const Text(
-                              'Накануне срока и в день выполнения',
-                            ),
+                            title: Text(context.l10n.tasksReminder),
+                            subtitle: Text(context.l10n.taskDueReminder),
                           ),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: _buildTimeButton(
-                                label: 'Время',
+                                label: context.l10n.time,
                                 time: _tasksTime,
                                 onPressed: _chooseTasksTime,
                               ),
@@ -357,11 +350,7 @@ class _RemindersPageState extends State<RemindersPage> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'У задач сейчас нет отдельного времени выполнения, '
-                            'поэтому уведомления приходят в выбранное время. '
-                            'Android и энергосбережение Xiaomi могут задерживать '
-                            'доставку. Для надёжной работы проверь разрешения '
-                            'уведомлений и фоновой работы приложения.',
+                            context.l10n.remindersTaskTimingNote,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               height: 1.45,
                             ),

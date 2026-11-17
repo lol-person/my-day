@@ -1,10 +1,9 @@
-// lib/core/backup/backup_service.dart
-
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
+import '../widgets/today_widget_service.dart';
 
 class BackupService {
   BackupService(this._database);
@@ -12,7 +11,7 @@ class BackupService {
   final AppDatabase _database;
 
   static const String formatName = 'productivity_app_backup';
-  static const int formatVersion = 2;
+  static const int formatVersion = 4;
   static const int maxBackupBytes = 25 * 1024 * 1024;
 
   static String suggestedFileName() {
@@ -29,14 +28,16 @@ class BackupService {
         '$hour$minute$second.json';
   }
 
-  /// Создаёт JSON-копию всех пользовательских данных и настроек.
-  /// Пользовательский порядок привычек и задач включается в копию.
   Future<Uint8List> createBackup() async {
     final settings = await _database.select(_database.appSettings).get();
     final habits = await _database.select(_database.habits).get();
     final schedules = await _database.select(_database.habitScheduleDays).get();
     final entries = await _database.select(_database.habitEntries).get();
     final tasks = await _database.select(_database.tasks).get();
+    final focusTimerState = await _database
+        .select(_database.focusTimerState)
+        .get();
+    final focusSessions = await _database.select(_database.focusSessions).get();
 
     final backup = <String, dynamic>{
       'format': formatName,
@@ -60,6 +61,7 @@ class BackupService {
                 'createdAt': habit.createdAt.toIso8601String(),
                 'isArchived': habit.isArchived,
                 'sortOrder': habit.sortOrder,
+                'deletedAt': habit.deletedAt?.toIso8601String(),
               },
             )
             .toList(),
@@ -92,6 +94,32 @@ class BackupService {
                 'priority': task.priority,
                 'isCompleted': task.isCompleted,
                 'sortOrder': task.sortOrder,
+                'deletedAt': task.deletedAt?.toIso8601String(),
+              },
+            )
+            .toList(),
+        'focusTimerState': focusTimerState
+            .map(
+              (state) => <String, dynamic>{
+                'id': state.id,
+                'phase': state.phase,
+                'status': state.status,
+                'completedWorkSessions': state.completedWorkSessions,
+                'sessionStartedAt': state.sessionStartedAt?.toIso8601String(),
+                'deadline': state.deadline?.toIso8601String(),
+                'segmentStartedAt': state.segmentStartedAt?.toIso8601String(),
+                'remainingSeconds': state.remainingSeconds,
+                'elapsedSeconds': state.elapsedSeconds,
+              },
+            )
+            .toList(),
+        'focusSessions': focusSessions
+            .map(
+              (session) => <String, dynamic>{
+                'id': session.id,
+                'startedAt': session.startedAt.toIso8601String(),
+                'completedAt': session.completedAt.toIso8601String(),
+                'durationSeconds': session.durationSeconds,
               },
             )
             .toList(),
@@ -110,7 +138,6 @@ class BackupService {
     return bytes;
   }
 
-  /// Проверяет копию и заменяет текущие данные в одной транзакции.
   Future<BackupSummary> restoreBackup(Uint8List bytes) async {
     if (bytes.isEmpty) {
       throw const FormatException('Файл резервной копии пуст.');
@@ -130,10 +157,10 @@ class BackupService {
 
     final parsed = _parseBackup(decoded);
 
-    // Все данные проверены до начала транзакции.
-    // При ошибке вставки SQLite отменит всю транзакцию.
     await _database.transaction(() async {
       await _database.delete(_database.tasks).go();
+      await _database.delete(_database.focusSessions).go();
+      await _database.delete(_database.focusTimerState).go();
       await _database.delete(_database.habitEntries).go();
       await _database.delete(_database.habitScheduleDays).go();
       await _database.delete(_database.habits).go();
@@ -161,6 +188,7 @@ class BackupService {
                 createdAt: Value(habit.createdAt),
                 isArchived: Value(habit.isArchived),
                 sortOrder: Value(habit.sortOrder),
+                deletedAt: Value(habit.deletedAt),
               ),
             );
       }
@@ -202,10 +230,47 @@ class BackupService {
                 priority: Value(task.priority),
                 isCompleted: Value(task.isCompleted),
                 sortOrder: Value(task.sortOrder),
+                deletedAt: Value(task.deletedAt),
+              ),
+            );
+      }
+
+      final focusState = parsed.focusTimerState;
+      if (focusState != null) {
+        await _database
+            .into(_database.focusTimerState)
+            .insert(
+              FocusTimerStateCompanion.insert(
+                id: Value(focusState.id),
+                phase: focusState.phase,
+                status: focusState.status,
+                completedWorkSessions: focusState.completedWorkSessions,
+                sessionStartedAt: Value(focusState.sessionStartedAt),
+                deadline: Value(focusState.deadline),
+                segmentStartedAt: Value(focusState.segmentStartedAt),
+                remainingSeconds: Value(focusState.remainingSeconds),
+                elapsedSeconds: focusState.elapsedSeconds,
+              ),
+            );
+      }
+
+      for (final session in parsed.focusSessions) {
+        await _database
+            .into(_database.focusSessions)
+            .insert(
+              FocusSessionsCompanion.insert(
+                id: Value(session.id),
+                startedAt: session.startedAt,
+                completedAt: session.completedAt,
+                durationSeconds: session.durationSeconds,
               ),
             );
       }
     });
+
+    try {
+      await TodayWidgetService.update(_database);
+    } catch (_) {}
 
     return BackupSummary(
       settingsCount: parsed.settings.length,
@@ -226,11 +291,10 @@ class BackupService {
 
     final version = _readInt(root, 'formatVersion', 'корень');
 
-    // Версия 1 поддерживается для совместимости со старыми копиями.
-    if (version != 1 && version != formatVersion) {
+    if (version < 1 || version > formatVersion || version == 0) {
       throw FormatException(
         'Версия резервной копии $version не поддерживается. '
-        'Поддерживаются версии 1 и $formatVersion.',
+        'Поддерживаются версии 1, 2, 3 и $formatVersion.',
       );
     }
 
@@ -283,14 +347,15 @@ class BackupService {
           createdAt: _readDate(row, 'createdAt', path),
           isArchived: _readBool(row, 'isArchived', path),
           sortOrder: version >= 2 ? _readInt(row, 'sortOrder', path) : 0,
+          deletedAt: version >= 4
+              ? _readNullableDate(row, 'deletedAt', path)
+              : null,
         );
       },
     ).toList();
 
     _checkUniqueIds(habits.map((habit) => habit.id), 'идентификаторы привычек');
 
-    // Старые копии не содержали пользовательского порядка.
-    // Для них восстанавливаем прежнюю сортировку по названию.
     if (version == 1) {
       habits.sort((a, b) {
         final titleComparison = a.title.compareTo(b.title);
@@ -412,13 +477,14 @@ class BackupService {
         priority: priority,
         isCompleted: _readBool(row, 'isCompleted', path),
         sortOrder: version >= 2 ? _readInt(row, 'sortOrder', path) : 0,
+        deletedAt: version >= 4
+            ? _readNullableDate(row, 'deletedAt', path)
+            : null,
       );
     }).toList();
 
     _checkUniqueIds(tasks.map((task) => task.id), 'идентификаторы задач');
 
-    // Для старых резервных копий сохраняем прежний порядок:
-    // высокий приоритет выше, внутри приоритета — новые задачи выше.
     if (version == 1) {
       tasks.sort((a, b) {
         final priorityComparison = b.priority.compareTo(a.priority);
@@ -435,12 +501,106 @@ class BackupService {
       }
     }
 
+    final focusStateRows = version >= 3
+        ? _readList(data['focusTimerState'], 'data.focusTimerState')
+        : <dynamic>[];
+    if (focusStateRows.length > 1) {
+      throw const FormatException(
+        'В копии может быть только один таймер фокуса.',
+      );
+    }
+    final focusState = focusStateRows.isEmpty
+        ? null
+        : _parseFocusState(focusStateRows.single);
+    final focusSessions = version >= 3
+        ? _readList(data['focusSessions'], 'data.focusSessions')
+              .asMap()
+              .entries
+              .map((item) => _parseFocusSession(item.value, item.key))
+              .toList()
+        : <_FocusSessionRecord>[];
+    _checkUniqueIds(focusSessions.map((session) => session.id), 'фокус-сессии');
+
     return _ParsedBackup(
       settings: settings,
       habits: habits,
       schedules: schedules,
       entries: entries,
       tasks: tasks,
+      focusTimerState: focusState,
+      focusSessions: focusSessions,
+    );
+  }
+
+  _FocusStateRecord _parseFocusState(dynamic value) {
+    final row = _readObject(value, 'data.focusTimerState[0]');
+    final phase = _readString(row, 'phase', 'data.focusTimerState[0]');
+    final status = _readString(row, 'status', 'data.focusTimerState[0]');
+    if (!const {'work', 'shortBreak', 'longBreak'}.contains(phase) ||
+        !const {'ready', 'running', 'paused'}.contains(status)) {
+      throw const FormatException('Состояние таймера фокуса некорректно.');
+    }
+    final remainingValue = row['remainingSeconds'];
+    final maxRemainingSeconds = switch (phase) {
+      'work' => 25 * 60,
+      'shortBreak' => 5 * 60,
+      'longBreak' => 15 * 60,
+      _ => 0,
+    };
+    if (remainingValue != null &&
+        (remainingValue is! int ||
+            remainingValue < 0 ||
+            remainingValue > maxRemainingSeconds)) {
+      throw const FormatException('Остаток времени таймера некорректен.');
+    }
+    final completed = _readInt(
+      row,
+      'completedWorkSessions',
+      'data.focusTimerState[0]',
+    );
+    final elapsed = _readInt(row, 'elapsedSeconds', 'data.focusTimerState[0]');
+    if (completed < 0 || completed > 3 || elapsed < 0 || elapsed > 1500) {
+      throw const FormatException('Показатели фокус-сессии некорректны.');
+    }
+    final id = _readPositiveInt(row, 'id', 'data.focusTimerState[0]');
+    if (id != 1) {
+      throw const FormatException(
+        'Идентификатор таймера фокуса должен быть равен 1.',
+      );
+    }
+    return _FocusStateRecord(
+      id: id,
+      phase: phase,
+      status: status,
+      completedWorkSessions: completed,
+      sessionStartedAt: _readNullableDate(
+        row,
+        'sessionStartedAt',
+        'data.focusTimerState[0]',
+      ),
+      deadline: _readNullableDate(row, 'deadline', 'data.focusTimerState[0]'),
+      segmentStartedAt: _readNullableDate(
+        row,
+        'segmentStartedAt',
+        'data.focusTimerState[0]',
+      ),
+      remainingSeconds: remainingValue as int?,
+      elapsedSeconds: elapsed,
+    );
+  }
+
+  _FocusSessionRecord _parseFocusSession(dynamic value, int index) {
+    final path = 'data.focusSessions[$index]';
+    final row = _readObject(value, path);
+    final duration = _readPositiveInt(row, 'durationSeconds', path);
+    if (duration > 1500) {
+      throw FormatException('$path.durationSeconds превышает 25 минут.');
+    }
+    return _FocusSessionRecord(
+      id: _readPositiveInt(row, 'id', path),
+      startedAt: _readDate(row, 'startedAt', path),
+      completedAt: _readDate(row, 'completedAt', path),
+      durationSeconds: duration,
     );
   }
 
@@ -625,6 +785,8 @@ class _ParsedBackup {
     required this.schedules,
     required this.entries,
     required this.tasks,
+    required this.focusTimerState,
+    required this.focusSessions,
   });
 
   final List<_SettingRecord> settings;
@@ -632,6 +794,46 @@ class _ParsedBackup {
   final List<_ScheduleRecord> schedules;
   final List<_EntryRecord> entries;
   final List<_TaskRecord> tasks;
+  final _FocusStateRecord? focusTimerState;
+  final List<_FocusSessionRecord> focusSessions;
+}
+
+class _FocusStateRecord {
+  const _FocusStateRecord({
+    required this.id,
+    required this.phase,
+    required this.status,
+    required this.completedWorkSessions,
+    required this.sessionStartedAt,
+    required this.deadline,
+    required this.segmentStartedAt,
+    required this.remainingSeconds,
+    required this.elapsedSeconds,
+  });
+
+  final int id;
+  final String phase;
+  final String status;
+  final int completedWorkSessions;
+  final DateTime? sessionStartedAt;
+  final DateTime? deadline;
+  final DateTime? segmentStartedAt;
+  final int? remainingSeconds;
+  final int elapsedSeconds;
+}
+
+class _FocusSessionRecord {
+  const _FocusSessionRecord({
+    required this.id,
+    required this.startedAt,
+    required this.completedAt,
+    required this.durationSeconds,
+  });
+
+  final int id;
+  final DateTime startedAt;
+  final DateTime completedAt;
+  final int durationSeconds;
 }
 
 class _SettingRecord {
@@ -649,6 +851,7 @@ class _HabitRecord {
     required this.createdAt,
     required this.isArchived,
     required this.sortOrder,
+    required this.deletedAt,
   });
 
   final int id;
@@ -657,6 +860,7 @@ class _HabitRecord {
   final DateTime createdAt;
   final bool isArchived;
   final int sortOrder;
+  final DateTime? deletedAt;
 
   _HabitRecord withSortOrder(int value) {
     return _HabitRecord(
@@ -666,6 +870,7 @@ class _HabitRecord {
       createdAt: createdAt,
       isArchived: isArchived,
       sortOrder: value,
+      deletedAt: deletedAt,
     );
   }
 }
@@ -701,6 +906,7 @@ class _TaskRecord {
     required this.priority,
     required this.isCompleted,
     required this.sortOrder,
+    required this.deletedAt,
   });
 
   final int id;
@@ -711,6 +917,7 @@ class _TaskRecord {
   final int priority;
   final bool isCompleted;
   final int sortOrder;
+  final DateTime? deletedAt;
 
   _TaskRecord withSortOrder(int value) {
     return _TaskRecord(
@@ -722,6 +929,7 @@ class _TaskRecord {
       priority: priority,
       isCompleted: isCompleted,
       sortOrder: value,
+      deletedAt: deletedAt,
     );
   }
 }

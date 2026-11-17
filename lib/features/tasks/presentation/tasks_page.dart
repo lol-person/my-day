@@ -1,8 +1,7 @@
-// lib/features/tasks/presentation/tasks_page.dart
-
 import 'package:flutter/material.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../l10n/l10n.dart';
 import '../data/task_repository.dart';
 
 class TasksPage extends StatefulWidget {
@@ -19,6 +18,7 @@ class _TasksPageState extends State<TasksPage> {
 
   List<Task> _tasks = [];
   TaskFilter _filter = TaskFilter.active;
+  bool _hasAnyTasks = false;
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -42,18 +42,25 @@ class _TasksPageState extends State<TasksPage> {
 
     try {
       final tasks = await _repository.getTasks(filter: _filter);
+      var hasAnyTasks = tasks.isNotEmpty;
+
+      if (!hasAnyTasks && _filter != TaskFilter.all) {
+        hasAnyTasks = (await _repository.getTasks(filter: TaskFilter.all))
+            .isNotEmpty;
+      }
 
       if (!mounted) return;
 
       setState(() {
         _tasks = tasks;
+        _hasAnyTasks = hasAnyTasks;
         _errorMessage = null;
       });
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
 
       setState(() {
-        _errorMessage = error.toString();
+        _errorMessage = context.l10n.taskLoadFailed;
       });
     } finally {
       if (mounted) {
@@ -64,7 +71,6 @@ class _TasksPageState extends State<TasksPage> {
     }
   }
 
-  /// Меняет порядок задач и сохраняет его в локальной базе.
   Future<void> _onReorder(int oldIndex, int newIndex) async {
     if (_isSaving ||
         oldIndex == newIndex ||
@@ -94,15 +100,15 @@ class _TasksPageState extends State<TasksPage> {
 
       if (!mounted) return;
 
-      _showMessage('Порядок задач сохранён');
-    } catch (error) {
+      _showMessage(context.l10n.taskOrderSaved);
+    } catch (_) {
       if (!mounted) return;
 
       setState(() {
         _tasks = previousTasks;
       });
 
-      _showMessage('Не удалось сохранить порядок задач: $error');
+      _showMessage(context.l10n.taskOrderFailed);
 
       await _loadTasks();
     } finally {
@@ -152,11 +158,13 @@ class _TasksPageState extends State<TasksPage> {
 
       if (!mounted) return;
 
-      _showMessage(task == null ? 'Задача добавлена' : 'Задача обновлена');
-    } catch (error) {
+      _showMessage(
+        task == null ? context.l10n.taskAdded : context.l10n.taskUpdated,
+      );
+    } catch (_) {
       if (!mounted) return;
 
-      _showMessage('Не удалось сохранить задачу: $error');
+      _showMessage(context.l10n.taskSavedFailed);
     } finally {
       if (mounted) {
         setState(() {
@@ -177,10 +185,10 @@ class _TasksPageState extends State<TasksPage> {
       await _repository.setCompleted(taskId: task.id, completed: completed);
 
       await _loadTasks();
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
 
-      _showMessage('Не удалось обновить задачу: $error');
+      _showMessage(context.l10n.taskUpdateFailed);
     } finally {
       if (mounted) {
         setState(() {
@@ -191,58 +199,50 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Future<void> _deleteTask(Task task) async {
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Удалить задачу?'),
-          content: Text(
-            'Задача «${task.title}» будет удалена без возможности '
-            'восстановления из этого экрана.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('Удалить'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (!mounted || shouldDelete != true || _isSaving) {
-      return;
-    }
+    if (_isSaving) return;
 
     setState(() {
       _isSaving = true;
     });
 
     try {
-      await _repository.deleteTask(task.id);
+      await _repository.moveTaskToTrash(task.id);
       await _loadTasks();
 
       if (!mounted) return;
 
-      _showMessage('Задача удалена');
-    } catch (error) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.taskMovedToTrashTitle(task.title)),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: context.l10n.undo,
+              onPressed: () => _restoreTask(task),
+            ),
+          ),
+        );
+    } catch (_) {
       if (!mounted) return;
 
-      _showMessage('Не удалось удалить задачу: $error');
+      _showMessage(context.l10n.taskDeleteFailed);
     } finally {
       if (mounted) {
         setState(() {
           _isSaving = false;
         });
       }
+    }
+  }
+
+  Future<void> _restoreTask(Task task) async {
+    try {
+      await _repository.restoreTask(task.id);
+      await _loadTasks();
+      if (mounted) _showMessage(context.l10n.taskRestored);
+    } catch (_) {
+      if (mounted) _showMessage(context.l10n.taskRestoreFailed);
     }
   }
 
@@ -253,20 +253,17 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-
-    return '$day.$month.${date.year}';
+    return MaterialLocalizations.of(context).formatMediumDate(date);
   }
 
   String _priorityLabel(int priority) {
     switch (priority) {
       case 0:
-        return 'Низкий';
+        return context.l10n.lowPriority;
       case 2:
-        return 'Высокий';
+        return context.l10n.highPriority;
       default:
-        return 'Обычный';
+        return context.l10n.normalPriority;
     }
   }
 
@@ -291,18 +288,22 @@ class _TasksPageState extends State<TasksPage> {
     String description;
     IconData icon;
 
-    if (_filter == TaskFilter.completed) {
-      title = 'Пока нет выполненных задач';
-      description = 'Когда завершишь задачу, она появится здесь.';
-      icon = Icons.task_alt_rounded;
-    } else if (_filter == TaskFilter.active) {
-      title = 'Все задачи выполнены!';
-      description = 'Можно отдохнуть или добавить новую задачу.';
-      icon = Icons.celebration_rounded;
-    } else {
-      title = 'Пока нет задач';
-      description = 'Добавь первую задачу, чтобы спланировать свой день.';
+    if (!_hasAnyTasks) {
+      title = context.l10n.noTasksYet;
+      description = context.l10n.addFirstTask;
       icon = Icons.checklist_rounded;
+    } else if (_filter == TaskFilter.active) {
+      title = context.l10n.allTasksComplete;
+      description = context.l10n.noActiveTasks;
+      icon = Icons.task_alt_rounded;
+    } else if (_filter == TaskFilter.completed) {
+      title = context.l10n.noCompletedTasks;
+      description = context.l10n.completedTasksAppear;
+      icon = Icons.task_alt_rounded;
+    } else {
+      title = context.l10n.noResults;
+      description = context.l10n.changeFilters;
+      icon = Icons.filter_list_rounded;
     }
 
     return Padding(
@@ -314,9 +315,7 @@ class _TasksPageState extends State<TasksPage> {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
+            style: theme.textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           Text(
@@ -331,7 +330,7 @@ class _TasksPageState extends State<TasksPage> {
           FilledButton.icon(
             onPressed: _isSaving ? null : () => _openTaskEditor(),
             icon: const Icon(Icons.add_rounded),
-            label: const Text('Новая задача'),
+            label: Text(context.l10n.newTask),
           ),
         ],
       ),
@@ -382,7 +381,6 @@ class _TasksPageState extends State<TasksPage> {
                     Text(
                       task.title,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
                         decoration: task.isCompleted
                             ? TextDecoration.lineThrough
                             : TextDecoration.none,
@@ -424,9 +422,6 @@ class _TasksPageState extends State<TasksPage> {
                                   color: isOverdue
                                       ? colors.error
                                       : colors.onSurfaceVariant,
-                                  fontWeight: isOverdue
-                                      ? FontWeight.w700
-                                      : FontWeight.normal,
                                 ),
                               ),
                             ],
@@ -450,10 +445,9 @@ class _TasksPageState extends State<TasksPage> {
                         ),
                         if (isOverdue)
                           Text(
-                            'Просрочена',
+                            context.l10n.taskOverdue,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: colors.error,
-                              fontWeight: FontWeight.w700,
                             ),
                           ),
                       ],
@@ -469,7 +463,7 @@ class _TasksPageState extends State<TasksPage> {
                   index: index,
                   enabled: !_isSaving,
                   child: Semantics(
-                    label: 'Перетащить задачу',
+                    label: context.l10n.taskOrderHint,
                     child: Padding(
                       padding: const EdgeInsets.all(10),
                       child: Icon(
@@ -483,7 +477,7 @@ class _TasksPageState extends State<TasksPage> {
                 ),
                 PopupMenuButton<String>(
                   enabled: !_isSaving,
-                  tooltip: 'Действия с задачей',
+                  tooltip: context.l10n.taskActions,
                   onSelected: (value) {
                     if (value == 'edit') {
                       _openTaskEditor(task: task);
@@ -491,14 +485,14 @@ class _TasksPageState extends State<TasksPage> {
                       _deleteTask(task);
                     }
                   },
-                  itemBuilder: (context) => const [
+                  itemBuilder: (context) => [
                     PopupMenuItem<String>(
                       value: 'edit',
                       child: Row(
                         children: [
                           Icon(Icons.edit_outlined),
                           SizedBox(width: 12),
-                          Text('Редактировать'),
+                          Text(context.l10n.edit),
                         ],
                       ),
                     ),
@@ -508,7 +502,7 @@ class _TasksPageState extends State<TasksPage> {
                         children: [
                           Icon(Icons.delete_outline_rounded),
                           SizedBox(width: 12),
-                          Text('Удалить'),
+                          Text(context.l10n.moveToTrash),
                         ],
                       ),
                     ),
@@ -540,7 +534,7 @@ class _TasksPageState extends State<TasksPage> {
               Icon(Icons.error_outline_rounded, color: colors.error, size: 44),
               const SizedBox(height: 12),
               Text(
-                'Не удалось загрузить задачи',
+                context.l10n.tasks,
                 style: theme.textTheme.titleMedium,
                 textAlign: TextAlign.center,
               ),
@@ -554,7 +548,7 @@ class _TasksPageState extends State<TasksPage> {
               FilledButton.icon(
                 onPressed: () => _loadTasks(showLoading: true),
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Повторить'),
+                label: Text(context.l10n.retry),
               ),
             ],
           ),
@@ -571,36 +565,30 @@ class _TasksPageState extends State<TasksPage> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                Text(
-                  'Мои задачи',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
-                ),
+                Text(context.l10n.tasks, style: theme.textTheme.headlineMedium),
                 const SizedBox(height: 6),
                 Text(
-                  'Планируй дела и отмечай выполненное.',
+                  context.l10n.tasksIntro,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 20),
                 SegmentedButton<TaskFilter>(
-                  segments: const [
+                  segments: [
                     ButtonSegment<TaskFilter>(
                       value: TaskFilter.active,
-                      label: Text('Активные'),
+                      label: Text(context.l10n.activeFilter),
                       icon: Icon(Icons.pending_actions_rounded),
                     ),
                     ButtonSegment<TaskFilter>(
                       value: TaskFilter.completed,
-                      label: Text('Готовые'),
+                      label: Text(context.l10n.completedFilter),
                       icon: Icon(Icons.task_alt_rounded),
                     ),
                     ButtonSegment<TaskFilter>(
                       value: TaskFilter.all,
-                      label: Text('Все'),
+                      label: Text(context.l10n.allFilter),
                     ),
                   ],
                   selected: {_filter},
@@ -616,7 +604,7 @@ class _TasksPageState extends State<TasksPage> {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  '${_tasks.length} ${_tasks.length == 1 ? 'задача' : 'задач в списке'}',
+                  context.l10n.taskCount(_tasks.length),
                   style: theme.textTheme.labelLarge?.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
@@ -624,7 +612,7 @@ class _TasksPageState extends State<TasksPage> {
                 if (_tasks.length > 1) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'Зажми значок с полосками справа, чтобы изменить порядок.',
+                    context.l10n.taskOrderHint,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
@@ -657,17 +645,12 @@ class _TasksPageState extends State<TasksPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Задачи',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
+      appBar: AppBar(title: Text(context.l10n.tasks)),
       body: SafeArea(child: _buildBody(context)),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isSaving ? null : () => _openTaskEditor(),
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Новая задача'),
+        label: Text(context.l10n.newTask),
       ),
     );
   }
@@ -723,9 +706,9 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
       initialDate: _dueDate ?? now,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      helpText: 'Выбери срок выполнения',
-      cancelText: 'Отмена',
-      confirmText: 'Выбрать',
+      helpText: context.l10n.taskDueDate,
+      cancelText: context.l10n.cancel,
+      confirmText: context.l10n.choose,
     );
 
     if (!mounted || selectedDate == null) return;
@@ -744,14 +727,14 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
 
     if (title.isEmpty) {
       setState(() {
-        _titleError = 'Введи название задачи';
+        _titleError = context.l10n.taskTitleRequired;
       });
       return;
     }
 
     if (title.length > 150) {
       setState(() {
-        _titleError = 'Максимум 150 символов';
+        _titleError = context.l10n.taskTitleTooLong;
       });
       return;
     }
@@ -767,10 +750,7 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
   }
 
   String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-
-    return '$day.$month.${date.year}';
+    return MaterialLocalizations.of(context).formatMediumDate(date);
   }
 
   @override
@@ -778,7 +758,7 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
     final theme = Theme.of(context);
 
     return AlertDialog(
-      title: Text(_isEditing ? 'Редактировать задачу' : 'Новая задача'),
+      title: Text(_isEditing ? context.l10n.editTask : context.l10n.newTask),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: SingleChildScrollView(
@@ -792,9 +772,8 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
                 maxLength: 150,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
-                  labelText: 'Название',
-                  hintText: 'Например, купить продукты',
-                  border: const OutlineInputBorder(),
+                  labelText: context.l10n.taskTitle,
+                  hintText: context.l10n.taskHint,
                   errorText: _titleError,
                 ),
                 onChanged: (_) {
@@ -811,24 +790,20 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
                 controller: _descriptionController,
                 maxLines: 3,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Описание (необязательно)',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: context.l10n.taskDescription,
                 ),
               ),
               const SizedBox(height: 20),
-              Text(
-                'Срок выполнения',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              Text(context.l10n.taskDueDate, style: theme.textTheme.titleSmall),
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: _chooseDueDate,
                 icon: const Icon(Icons.calendar_today_rounded),
                 label: Text(
-                  _dueDate == null ? 'Выбрать дату' : _formatDate(_dueDate!),
+                  _dueDate == null
+                      ? context.l10n.chooseDate
+                      : _formatDate(_dueDate!),
                 ),
               ),
               if (_dueDate != null)
@@ -839,22 +814,26 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
                     });
                   },
                   icon: const Icon(Icons.close_rounded),
-                  label: const Text('Убрать срок'),
+                  label: Text(context.l10n.removeDueDate),
                 ),
               const SizedBox(height: 16),
-              Text(
-                'Приоритет',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              Text(context.l10n.priority, style: theme.textTheme.titleSmall),
               const SizedBox(height: 8),
               SegmentedButton<int>(
                 showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment<int>(value: 0, label: Text('Низкий')),
-                  ButtonSegment<int>(value: 1, label: Text('Обычный')),
-                  ButtonSegment<int>(value: 2, label: Text('Высокий')),
+                segments: [
+                  ButtonSegment<int>(
+                    value: 0,
+                    label: Text(context.l10n.lowPriority),
+                  ),
+                  ButtonSegment<int>(
+                    value: 1,
+                    label: Text(context.l10n.normalPriority),
+                  ),
+                  ButtonSegment<int>(
+                    value: 2,
+                    label: Text(context.l10n.highPriority),
+                  ),
                 ],
                 selected: {_priority},
                 onSelectionChanged: (selection) {
@@ -870,11 +849,11 @@ class _TaskEditorDialogState extends State<_TaskEditorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Отмена'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           onPressed: _submit,
-          child: Text(_isEditing ? 'Сохранить' : 'Создать'),
+          child: Text(_isEditing ? context.l10n.save : context.l10n.create),
         ),
       ],
     );

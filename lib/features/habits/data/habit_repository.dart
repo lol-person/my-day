@@ -1,9 +1,8 @@
-// lib/features/habits/data/habit_repository.dart
-
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/notifications/notification_service.dart';
+import '../../../core/widgets/today_widget_service.dart';
 
 class HabitRepository {
   HabitRepository(this._database);
@@ -13,9 +12,10 @@ class HabitRepository {
   Future<void> _syncRemindersSafely() async {
     try {
       await LocalNotificationService.instance.syncAll(_database);
-    } catch (_) {
-      // Ошибка уведомлений не должна отменять изменение привычки.
-    }
+    } catch (_) {}
+    try {
+      await TodayWidgetService.update(_database);
+    } catch (_) {}
   }
 
   void _validateHabit({required String title, required Set<int> weekdays}) {
@@ -52,6 +52,7 @@ class HabitRepository {
     final habitId = await _database.transaction(() async {
       final lastHabit =
           await (_database.select(_database.habits)
+                ..where((habit) => habit.deletedAt.isNull())
                 ..orderBy([(habit) => OrderingTerm.desc(habit.sortOrder)])
                 ..limit(1))
               .getSingleOrNull();
@@ -148,10 +149,10 @@ class HabitRepository {
     await _syncRemindersSafely();
   }
 
-  /// Возвращает активные привычки в сохранённом порядке.
   Future<List<Habit>> getActiveHabits() {
     return (_database.select(_database.habits)
           ..where((habit) => habit.isArchived.equals(false))
+          ..where((habit) => habit.deletedAt.isNull())
           ..orderBy([
             (habit) => OrderingTerm.asc(habit.sortOrder),
             (habit) => OrderingTerm.asc(habit.title),
@@ -160,10 +161,10 @@ class HabitRepository {
         .get();
   }
 
-  /// Возвращает архивные привычки в сохранённом порядке.
   Future<List<Habit>> getArchivedHabits() {
     return (_database.select(_database.habits)
           ..where((habit) => habit.isArchived.equals(true))
+          ..where((habit) => habit.deletedAt.isNull())
           ..orderBy([
             (habit) => OrderingTerm.asc(habit.sortOrder),
             (habit) => OrderingTerm.asc(habit.title),
@@ -172,23 +173,19 @@ class HabitRepository {
         .get();
   }
 
-  /// Сохраняет порядок привычек внутри активного списка или архива.
-  ///
-  /// orderedHabitIds должен содержать все ID соответствующего списка
-  /// в новом порядке, сверху вниз.
-  ///
-  /// Порядок второго списка сохраняется.
   Future<void> reorderHabits({
     required List<int> orderedHabitIds,
     required bool archived,
   }) async {
     await _database.transaction(() async {
       final allHabits =
-          await (_database.select(_database.habits)..orderBy([
-                (habit) => OrderingTerm.asc(habit.sortOrder),
-                (habit) => OrderingTerm.asc(habit.title),
-                (habit) => OrderingTerm.asc(habit.id),
-              ]))
+          await (_database.select(_database.habits)
+                ..where((habit) => habit.deletedAt.isNull())
+                ..orderBy([
+                  (habit) => OrderingTerm.asc(habit.sortOrder),
+                  (habit) => OrderingTerm.asc(habit.title),
+                  (habit) => OrderingTerm.asc(habit.id),
+                ]))
               .get();
 
       final selectedHabits = allHabits
@@ -212,8 +209,6 @@ class HabitRepository {
       final reorderedHabits = List<Habit>.of(allHabits);
       var nextSelectedIndex = 0;
 
-      // Меняем выбранные элементы местами, не меняя позиции
-      // элементов из другого списка.
       for (var index = 0; index < reorderedHabits.length; index++) {
         if (reorderedHabits[index].isArchived == archived) {
           reorderedHabits[index] =
@@ -222,7 +217,6 @@ class HabitRepository {
         }
       }
 
-      // Фиксируем уникальные позиции в базе данных.
       for (var index = 0; index < reorderedHabits.length; index++) {
         final habit = reorderedHabits[index];
 
@@ -233,7 +227,6 @@ class HabitRepository {
     });
   }
 
-  /// Восстанавливает привычку из архива.
   Future<void> restoreHabit(int habitId) async {
     final existingHabit = await (_database.select(
       _database.habits,
@@ -247,6 +240,51 @@ class HabitRepository {
           ..where((habit) => habit.id.equals(habitId)))
         .write(const HabitsCompanion(isArchived: Value(false)));
 
+    await _syncRemindersSafely();
+  }
+
+  Future<List<Habit>> getDeletedHabits() {
+    return (_database.select(_database.habits)
+          ..where((habit) => habit.deletedAt.isNotNull())
+          ..orderBy([
+            (habit) => OrderingTerm.desc(habit.deletedAt),
+            (habit) => OrderingTerm.asc(habit.sortOrder),
+            (habit) => OrderingTerm.asc(habit.id),
+          ]))
+        .get();
+  }
+
+  Future<void> moveHabitToTrash(int habitId, {DateTime? deletedAt}) async {
+    final updatedRows =
+        await (_database.update(_database.habits)..where(
+              (habit) => habit.id.equals(habitId) & habit.deletedAt.isNull(),
+            ))
+            .write(
+              HabitsCompanion(deletedAt: Value(deletedAt ?? DateTime.now())),
+            );
+    if (updatedRows == 0) {
+      throw StateError('Привычка с ID $habitId не найдена.');
+    }
+    await _syncRemindersSafely();
+  }
+
+  Future<void> restoreHabitFromTrash(int habitId) async {
+    final updatedRows =
+        await (_database.update(_database.habits)..where(
+              (habit) => habit.id.equals(habitId) & habit.deletedAt.isNotNull(),
+            ))
+            .write(const HabitsCompanion(deletedAt: Value(null)));
+    if (updatedRows == 0) {
+      throw StateError('Привычка с ID $habitId не найдена в корзине.');
+    }
+    await _syncRemindersSafely();
+  }
+
+  Future<void> permanentlyDeleteHabit(int habitId) async {
+    await (_database.delete(_database.habits)..where(
+          (habit) => habit.id.equals(habitId) & habit.deletedAt.isNotNull(),
+        ))
+        .go();
     await _syncRemindersSafely();
   }
 
@@ -292,6 +330,9 @@ class HabitRepository {
           ))
           .go();
     }
+    try {
+      await TodayWidgetService.update(_database);
+    } catch (_) {}
   }
 
   Future<void> archiveHabit(int habitId) async {

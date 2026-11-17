@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">My Day</string>
+    <string name="today_widget_title">Today</string>
+    <string name="today_widget_subtitle">Today\'s overview</string>
+    <string name="today_widget_empty">Nothing planned for today</string>
+    <string name="today_widget_habits_label">Habits</string>
+    <string name="today_widget_tasks_label">Tasks</string>
+    <string name="today_widget_progress_label">Progress</string>
+    <string name="today_widget_habits_description">Habits today: %1$d of %2$d. Open habits</string>
+    <string name="today_widget_tasks_description">Active tasks: %1$d. Open tasks</string>
+    <string name="today_widget_progress_description">Habit progress: %1$d percent. Open statistics</string>
+    <string name="today_widget_description">Habit progress and tasks for today</string>
+</resources>
