@@ -1,6 +1,6 @@
-# Productivity App
+# My Day
 
-A local-first Android productivity application built with Flutter and Material 3.
+My Day is a local-first Android productivity app built with Flutter and Material 3.
 
 ## Features
 
@@ -55,8 +55,8 @@ Supported import versions: **1, 2, 3 and 4**.
 Clone the repository:
 
 ```bash
-git clone <repository-url>
-cd productivity_app
+git clone https://github.com/lol-person/my-day.git
+cd my-day
 flutter pub get
 flutter gen-l10n
 flutter analyze
