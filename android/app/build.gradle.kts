@@ -22,7 +22,7 @@ val releaseSigningConfigured =
     } && releaseStoreFile?.isFile == true
 
 android {
-    namespace = "com.example.productivity_app"
+    namespace = "com.lolperson.myday"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -33,7 +33,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.productivity_app"
+        applicationId = "com.lolperson.myday"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         multiDexEnabled = true

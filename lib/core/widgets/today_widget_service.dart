@@ -7,7 +7,7 @@ class TodayWidgetService {
   TodayWidgetService._();
 
   static const MethodChannel _channel = MethodChannel(
-    'com.example.productivity_app/today_widget',
+    'com.lolperson.myday/today_widget',
   );
 
   static Future<TodayWidgetSnapshot> readSnapshot(

@@ -1,4 +1,4 @@
-package com.example.productivity_app
+package com.lolperson.myday
 
 import android.content.Intent
 import io.flutter.embedding.android.FlutterActivity
@@ -59,7 +59,7 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
-        const val CHANNEL_NAME = "com.example.productivity_app/today_widget"
+        const val CHANNEL_NAME = "com.lolperson.myday/today_widget"
         const val EXTRA_WIDGET_TARGET = "today_widget_target"
     }
 }

@@ -9,7 +9,7 @@ import 'package:productivity_app/features/tasks/presentation/tasks_page.dart';
 import 'package:productivity_app/l10n/app_localizations.dart';
 
 const _todayWidgetChannel = MethodChannel(
-  'com.example.productivity_app/today_widget',
+  'com.lolperson.myday/today_widget',
 );
 
 MaterialApp _app({

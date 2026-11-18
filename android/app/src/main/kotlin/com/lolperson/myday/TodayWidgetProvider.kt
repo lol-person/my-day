@@ -1,4 +1,4 @@
-package com.example.productivity_app
+package com.lolperson.myday
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -113,7 +113,7 @@ class TodayWidgetProvider : AppWidgetProvider() {
         private const val KEY_COMPLETED_HABITS = "completed_habits"
         private const val KEY_TOTAL_HABITS = "total_habits"
         private const val KEY_ACTIVE_TASKS = "active_tasks"
-        private const val ACTION_OPEN_WIDGET_TARGET = "com.example.productivity_app.OPEN_WIDGET_TARGET"
+        private const val ACTION_OPEN_WIDGET_TARGET = "com.lolperson.myday.OPEN_WIDGET_TARGET"
         private const val TARGET_HABITS = "habits"
         private const val TARGET_TASKS = "tasks"
         private const val TARGET_STATISTICS = "statistics"
