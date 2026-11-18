@@ -61,25 +61,18 @@ flutter pub get
 flutter gen-l10n
 flutter analyze
 flutter test
-```
 
 Run on an Android device:
 
-```bash
 flutter run
-```
 
 ## Release build
 
-```bash
 flutter build apk --release
-```
 
 For smaller architecture-specific APKs:
 
-```bash
 flutter build apk --release --split-per-abi
-```
 
 ### Signing
 
