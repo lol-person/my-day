@@ -2,6 +2,27 @@
 
 My Day is a local-first Android productivity app built with Flutter and Material 3.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/home.jpg" width="220" alt="My Day home screen">
+  <img src="docs/screenshots/habits.jpg" width="220" alt="Habits tracking">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/tasks.jpg" width="220" alt="Task management">
+  <img src="docs/screenshots/calendar.jpg" width="220" alt="Calendar and planning">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/statistics.jpg" width="220" alt="Productivity statistics">
+  <img src="docs/screenshots/focus.jpg" width="220" alt="Pomodoro focus timer">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/settings.jpg" width="220" alt="Application settings and themes">
+</p>
+
 ## Features
 
 - Habits with weekly schedules, tracking, archive and restoration.
